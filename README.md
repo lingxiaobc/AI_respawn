@@ -32,9 +32,23 @@ npm run capture:check  # 4 秒本地麦克风检查；不联网、不落盘
 npm run probe          # 固定 WAV 直连供应商 Gate 1 探针
 npm run gateway:probe  # 经浏览器网关协议往返固定 WAV
 npm run ptt            # 5 轮本机 CLI 按住说话验证
+npm run diagnostics    # 查看或筛选本地脱敏诊断日志
 ```
 
 真实麦克风输入不会写入文件。`artifacts/` 仅用于固定公开测试样本的探针回复，且已被 Git 忽略。
+
+## 诊断日志
+
+网关、固定探针和 CLI 会在项目根目录 `logs/` 生成按日期滚动的 JSONL 诊断日志，默认保留最近 7 天。浏览器页面会显示本次会话的简短“诊断 ID”，发生问题时连同该 ID 一起反馈即可。
+
+```powershell
+npm run diagnostics                         # 最近 50 条记录
+npm run diagnostics -- --id=deadbeef        # 按诊断 ID 筛选
+npm run diagnostics -- --tail=200           # 查看最近 200 条
+npm run diagnostics -- --id=deadbeef --export=artifacts/diagnostics-export.jsonl
+```
+
+日志只包含会话/轮次事件、耗时、结构计数、错误上下文、供应商 event ID/Log ID 和关闭原因；不包含输入音频、输出音频、转写文本、模型文本、Base64、API Key 或完整请求/响应。`logs/` 已被 Git 忽略。
 
 ## 音频与协议
 

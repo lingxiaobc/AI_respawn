@@ -26,6 +26,7 @@ const stages: Array<{ label: string; states: UiState[] }> = [
 export function App() {
   const [state, setState] = useState<UiState>("connecting");
   const [round, setRound] = useState(0);
+  const [diagnosticId, setDiagnosticId] = useState<string | null>(null);
   const [latencyMs, setLatencyMs] = useState<number | null>(null);
   const [inputFrames, setInputFrames] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -49,6 +50,16 @@ export function App() {
     const socket = socketRef.current;
     if (socket?.readyState !== WebSocket.OPEN) throw new Error("本地网关尚未连接");
     socket.send(JSON.stringify({ type }));
+  }, []);
+
+  const reportDiagnostic = useCallback((code: string, message?: string) => {
+    const socket = socketRef.current;
+    if (socket?.readyState !== WebSocket.OPEN) return;
+    try {
+      socket.send(JSON.stringify({ type: "client.diagnostic", code, message: message?.slice(0, 160) }));
+    } catch {
+      // The gateway close path remains the diagnostic fallback.
+    }
   }, []);
 
   const enqueuePlayback = useCallback((arrayBuffer: ArrayBuffer) => {
@@ -96,6 +107,7 @@ export function App() {
         return;
       }
       const message = JSON.parse(String(event.data)) as GatewayMessage;
+      if (message.diagnostic_id) setDiagnosticId(message.diagnostic_id);
       if (message.round) setRound(message.round);
       if (message.type === "error") {
         setError(message.message ?? "本地网关返回错误");
@@ -108,6 +120,7 @@ export function App() {
     };
     socket.onerror = () => {
       if (!disposed) {
+        reportDiagnostic("BROWSER_SOCKET_ERROR", "WebSocket error");
         setError("无法连接本地语音网关，请确认服务已启动");
         updateState("error");
       }
@@ -120,7 +133,7 @@ export function App() {
       socket.close(1000, "page unmounted");
       if (playbackTimerRef.current !== null) window.clearTimeout(playbackTimerRef.current);
     };
-  }, [enqueuePlayback, finishPlayback, updateState]);
+  }, [enqueuePlayback, finishPlayback, reportDiagnostic, updateState]);
 
   const ensureAudio = useCallback(async () => {
     if (captureRef.current && audioContextRef.current) {
@@ -170,11 +183,13 @@ export function App() {
       updateState("listening");
       captureRef.current!.port.postMessage({ active: true });
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "无法启用麦克风");
+      const message = cause instanceof Error ? cause.message : "无法启用麦克风";
+      reportDiagnostic("MICROPHONE_INIT", message);
+      setError(message);
       updateState("error");
       pressedRef.current = false;
     }
-  }, [ensureAudio, sendControl, updateState]);
+  }, [ensureAudio, reportDiagnostic, sendControl, updateState]);
 
   const endTalk = useCallback(() => {
     pressedRef.current = false;
@@ -183,10 +198,12 @@ export function App() {
     pttUpAtRef.current = performance.now();
     updateState("thinking");
     try { sendControl("ptt.commit"); } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "提交失败");
+      const message = cause instanceof Error ? cause.message : "提交失败";
+      reportDiagnostic("BROWSER_COMMIT", message);
+      setError(message);
       updateState("error");
     }
-  }, [sendControl, updateState]);
+  }, [reportDiagnostic, sendControl, updateState]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -240,6 +257,7 @@ export function App() {
           </button>
         </div>
         <div className="status-line" role="status"><span className="status-dot" />{error ?? stateCopy[state]}</div>
+        {diagnosticId && <div className="diagnostic-id">诊断 ID：{diagnosticId}</div>}
         {state === "error" && <button className="retry" type="button" onClick={() => location.reload()}>重新连接</button>}
       </section>
       <section className="telemetry" aria-label="会话状态">

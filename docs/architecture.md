@@ -19,7 +19,7 @@ Browser (no provider secret)
 Node gateway
   browser session <-> Doubao session  (1:1)
   backpressure / timeout / cleanup
-  redacted metrics
+  redacted JSONL diagnostics
             |
             | WSS + X-Api-Key
             v
@@ -84,14 +84,13 @@ any live state -> closing -> closed
 
 ## 可观察指标
 
-- `connect_started_at` / `session_created_at`
-- `ptt_down_at` / `ptt_up_at`
-- 输入帧数、字节数、推算时长、峰值与静音比例
-- `input_committed_at`
-- `provider_audio_started_at` / `first_audio_delta_at`
-- `browser_first_sound_at`
-- `response_done_at`、返回字节数与推算时长
-- provider `event_id` 与响应头 `X-Tt-Logid`；API Key 永不记录
+- 诊断日志事件：`session_started`、`round_started`、`round_completed`、`error`、`session_closed`
+- 每条记录：ISO 时间、组件、`diagnostic_id`、`session_id`、轮次和结果
+- 轮次摘要：输入帧/字节数、输出分片/字节数、ASR 完成状态、提交到首声和轮次总耗时
+- 错误上下文：阶段、脱敏错误码/消息、状态、provider `event_id`、可得的 `X-Tt-Logid`、HTTP 状态和关闭码/原因
+- 不记录输入/输出音频、转写正文、模型正文、Base64、API Key 或完整请求/响应
+
+日志写入项目根目录 `logs/diagnostics-YYYY-MM-DD.jsonl`，默认保留 7 天；写入、滚动或清理失败只降级到 stderr，不阻断会话主链路。
 
 松手到首声延迟拆为：
 

@@ -11,6 +11,8 @@ coverage/
 
 # Runtime artifacts
 artifacts/
+logs/
+diagnostics-export*.jsonl
 *.log
 
 # OS/editor noise

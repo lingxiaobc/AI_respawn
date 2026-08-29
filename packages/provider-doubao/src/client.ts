@@ -20,6 +20,15 @@ export interface DoubaoClientOptions {
   timeoutMs?: number;
 }
 
+export interface ProviderDiagnostic {
+  kind: "handshake_rejected" | "socket_error" | "socket_closed";
+  status_code?: number;
+  log_id?: string;
+  close_code?: number;
+  close_reason?: string;
+  message?: string;
+}
+
 export class DoubaoRealtimeClient extends EventTarget {
   readonly #options: DoubaoClientOptions;
   #socket?: WebSocket;
@@ -152,7 +161,19 @@ export class DoubaoRealtimeClient extends EventTarget {
       }
     });
     socket.on("error", (error) => {
+      this.dispatchEvent(new CustomEvent<ProviderDiagnostic>("provider-diagnostic", {
+        detail: { kind: "socket_error", message: error.message },
+      }));
       this.dispatchEvent(new CustomEvent("client-error", { detail: error }));
+    });
+    socket.on("close", (code, reason) => {
+      this.dispatchEvent(new CustomEvent<ProviderDiagnostic>("provider-diagnostic", {
+        detail: {
+          kind: "socket_closed",
+          close_code: code,
+          close_reason: reason.toString("utf8").slice(0, 200) || undefined,
+        },
+      }));
     });
   }
 
@@ -166,24 +187,20 @@ export class DoubaoRealtimeClient extends EventTarget {
       });
       socket.once("unexpected-response", (_request, response) => {
         clearTimeout(timer);
-        const chunks: Buffer[] = [];
-        response.on("data", (chunk: Buffer) => {
-          if (Buffer.concat(chunks).byteLength < 2_048) chunks.push(Buffer.from(chunk));
-        });
-        response.on("end", () => {
-          const logId = response.headers["x-tt-logid"];
-          const body = Buffer.concat(chunks).toString("utf8").trim().slice(0, 2_048);
-          const details = [
-            `HTTP ${response.statusCode}`,
-            logId ? `logid=${Array.isArray(logId) ? logId[0] : logId}` : undefined,
-            body ? `body=${body}` : undefined,
-          ].filter(Boolean);
-          reject(new Error(`Provider handshake rejected: ${details.join(" ")}`));
-        });
+        const rawLogId = response.headers["x-tt-logid"];
+        const logId = Array.isArray(rawLogId) ? rawLogId[0] : rawLogId;
+        this.dispatchEvent(new CustomEvent<ProviderDiagnostic>("provider-diagnostic", {
+          detail: { kind: "handshake_rejected", status_code: response.statusCode, log_id: logId },
+        }));
+        const details = [`HTTP ${response.statusCode}`, logId ? `logid=${logId}` : "logid=unavailable"];
+        reject(new Error(`Provider handshake rejected: ${details.join(" ")}`));
         response.resume();
       });
       socket.once("error", (error) => {
         clearTimeout(timer);
+        this.dispatchEvent(new CustomEvent<ProviderDiagnostic>("provider-diagnostic", {
+          detail: { kind: "socket_error", message: error.message },
+        }));
         reject(error);
       });
     });

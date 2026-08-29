@@ -26,3 +26,11 @@ test("pointer cancel and playback completion map to explicit controls", () => {
   assert.deepEqual(parseBrowserControl('{"type":"playback.done"}'), { type: "playback.done" });
   assert.deepEqual(parseBrowserControl('{"type":"session.close"}'), { type: "session.close" });
 });
+
+test("browser diagnostics accept only bounded safe fields", () => {
+  assert.deepEqual(
+    parseBrowserControl('{"type":"client.diagnostic","code":"MICROPHONE_INIT","message":"permission denied"}'),
+    { type: "client.diagnostic", code: "MICROPHONE_INIT", message: "permission denied" },
+  );
+  assert.throws(() => parseBrowserControl('{"type":"client.diagnostic","code":"bad code"}'), /code is invalid/);
+});

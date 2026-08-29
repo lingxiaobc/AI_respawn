@@ -4,7 +4,10 @@ import { createInterface } from "node:readline";
 import { PvRecorder } from "@picovoice/pvrecorder-node";
 import { PvSpeaker } from "@picovoice/pvspeaker-node";
 import { PcmPlaybackQueue } from "../packages/audio/src/playback.ts";
+import { DiagnosticLogger } from "../packages/diagnostics/src/logger.ts";
+import { createSessionIdentity } from "../packages/diagnostics/src/schema.ts";
 import { DoubaoRealtimeClient } from "../packages/provider-doubao/src/client.ts";
+import { type ProviderDiagnostic } from "../packages/provider-doubao/src/client.ts";
 import { safeEventSummary, type ServerEvent } from "../packages/provider-doubao/src/protocol.ts";
 import { loadLocalEnv } from "./env.ts";
 
@@ -23,6 +26,7 @@ interface RoundMetrics {
   inputBytes: number;
   inputPeak: number;
   outputBytes: number;
+  outputChunks: number;
   asrCompleted: boolean;
 }
 
@@ -56,6 +60,15 @@ const inputDevice = integerArg("input-device", -1);
 const outputDevice = integerArg("output-device", -1);
 if (roundsTarget < 1 || roundsTarget > 10) throw new Error("--rounds must be between 1 and 10");
 
+const identity = createSessionIdentity();
+const diagnostics = new DiagnosticLogger({ directory: process.env.DIAGNOSTICS_DIR ?? resolve("logs"), retentionDays: 7 });
+diagnostics.write({
+  event: "session_started",
+  component: "ptt",
+  diagnostic_id: identity.diagnosticId,
+  session_id: identity.sessionId,
+});
+
 const recorder = new PvRecorder(FRAME_LENGTH, inputDevice);
 if (recorder.sampleRate !== INPUT_SAMPLE_RATE) {
   recorder.release();
@@ -84,13 +97,32 @@ let capture: Promise<void> | undefined;
 let roundsCompleted = 0;
 let state: "connecting" | "ready" | "listening" | "thinking" | "speaking" | "closing" = "connecting";
 let operations = Promise.resolve();
+let lastProviderEventId: string | undefined;
+let providerLogId: string | undefined;
+let providerStatus: number | string | undefined;
 
 client.addEventListener("provider-event", (raw) => {
   const event = (raw as CustomEvent<ServerEvent>).detail;
+  if (typeof event.event_id === "string") lastProviderEventId = event.event_id;
   if (event.type === "conversation.item.input_audio_transcription.completed" && active) {
     active.asrCompleted = true;
   }
-  if (event.type === "error") console.error(JSON.stringify(safeEventSummary(event)));
+  if (event.type === "error") {
+    const summary = safeEventSummary(event);
+    providerStatus = summary.status_code;
+    diagnostics.write({
+      event: "error",
+      component: "ptt",
+      diagnostic_id: identity.diagnosticId,
+      session_id: identity.sessionId,
+      round: active?.number,
+      code: "UPSTREAM_EVENT",
+      message: summary.message ?? "Provider returned an error",
+      provider_event_id: lastProviderEventId,
+      provider_status: providerStatus,
+    });
+    console.error(JSON.stringify({ type: "provider-error", code: "UPSTREAM_EVENT", message: summary.message }));
+  }
 });
 
 client.addEventListener("provider-audio", (raw) => {
@@ -98,12 +130,31 @@ client.addEventListener("provider-audio", (raw) => {
   const pcm = Buffer.from((raw as CustomEvent<Uint8Array>).detail);
   active.firstProviderAudioAt ??= performance.now();
   active.outputBytes += pcm.byteLength;
+  active.outputChunks += 1;
   playback.enqueue(pcm);
   state = "speaking";
 });
 
+client.addEventListener("provider-diagnostic", (raw) => {
+  const detail = (raw as CustomEvent<ProviderDiagnostic>).detail;
+  if (detail.log_id) providerLogId = detail.log_id;
+  if (detail.status_code !== undefined) providerStatus = detail.status_code;
+});
+
 client.addEventListener("client-error", (raw) => {
   const error = (raw as CustomEvent<Error>).detail;
+  diagnostics.write({
+    event: "error",
+    component: "ptt",
+    diagnostic_id: identity.diagnosticId,
+    session_id: identity.sessionId,
+    round: active?.number,
+    code: "CLIENT_ERROR",
+    message: error.message,
+    provider_event_id: lastProviderEventId,
+    provider_logid: providerLogId,
+    provider_status: providerStatus,
+  });
   console.error(JSON.stringify({ type: "client-error", message: error.message }));
 });
 
@@ -119,6 +170,7 @@ async function startRound(): Promise<void> {
     inputBytes: 0,
     inputPeak: 0,
     outputBytes: 0,
+    outputChunks: 0,
     asrCompleted: false,
   };
   const metrics = active;
@@ -130,6 +182,13 @@ async function startRound(): Promise<void> {
   client.unmute();
   recorder.start();
   state = "listening";
+  diagnostics.write({
+    event: "round_started",
+    component: "ptt",
+    diagnostic_id: identity.diagnosticId,
+    session_id: identity.sessionId,
+    round: metrics.number,
+  });
   console.log(`第 ${metrics.number}/${roundsTarget} 轮：正在聆听，松开空格提交。`);
 
   capture = (async () => {
@@ -182,11 +241,30 @@ async function finishRound(): Promise<void> {
       input_bytes: metrics.inputBytes,
       input_peak: metrics.inputPeak,
       asr_completed: metrics.asrCompleted,
+      output_chunks: metrics.outputChunks,
       output_pcm_bytes: metrics.outputBytes,
       ptt_up_to_provider_audio_ms: providerLatency,
       ptt_up_to_playback_write_ms: playbackLatency,
     }),
   );
+  diagnostics.write({
+    event: "round_completed",
+    component: "ptt",
+    diagnostic_id: identity.diagnosticId,
+    session_id: identity.sessionId,
+    round: metrics.number,
+    result: "ok",
+    input_frames: metrics.inputFrames,
+    input_bytes: metrics.inputBytes,
+    output_chunks: metrics.outputChunks,
+    output_pcm_bytes: metrics.outputBytes,
+    asr_completed: metrics.asrCompleted,
+    commit_to_first_audio_ms: providerLatency ?? undefined,
+    round_duration_ms: metrics.pttUpAt ? Math.round(performance.now() - metrics.pttDownAt) : undefined,
+    provider_event_id: lastProviderEventId,
+    provider_logid: providerLogId,
+    provider_status: providerStatus,
+  });
   roundsCompleted += 1;
   active = undefined;
   playback = undefined;
@@ -204,7 +282,7 @@ try {
   await client.connect();
   speaker.start();
   state = "ready";
-  console.log(`已连接。共测试 ${roundsTarget} 轮：按住空格说普通话，松开提交；按 Esc 提前退出。\n`);
+  console.log(`已连接。诊断 ID：${identity.diagnosticId}。共测试 ${roundsTarget} 轮：按住空格说普通话，松开提交；按 Esc 提前退出。\n`);
 
   const lines = createInterface({ input: watcher.stdout });
   for await (const line of lines) {
@@ -220,6 +298,17 @@ try {
   watcher.kill();
   await operations.catch(() => undefined);
   await client.close();
+  diagnostics.write({
+    event: "session_closed",
+    component: "ptt",
+    diagnostic_id: identity.diagnosticId,
+    session_id: identity.sessionId,
+    round: roundsCompleted || undefined,
+    result: roundsCompleted >= roundsTarget ? "closed" : "aborted",
+    provider_event_id: lastProviderEventId,
+    provider_logid: providerLogId,
+    provider_status: providerStatus,
+  });
   if (speaker.isStarted) speaker.stop();
   speaker.release();
   recorder.release();

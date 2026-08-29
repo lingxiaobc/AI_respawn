@@ -40,6 +40,7 @@ h1 { font-family: Georgia, "STSong", serif; font-weight: 400; font-size: clamp(3
 .mic-glyph { width: 18px; height: 28px; border: 2px solid currentColor; border-radius: 11px; position: relative; }
 .mic-glyph::after { content: ""; position: absolute; width: 28px; height: 17px; left: -7px; top: 11px; border: 2px solid currentColor; border-top: 0; border-radius: 0 0 15px 15px; }
 .status-line { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 13px; }
+.diagnostic-id { margin-top: 8px; color: #77716b; font-family: ui-monospace, monospace; font-size: 10px; letter-spacing: .08em; }
 .is-listening .status-dot { background: var(--accent); box-shadow: 0 0 0 6px rgba(255,107,74,.12); }
 .is-error .status-dot, .is-closed .status-dot { background: #d56767; box-shadow: 0 0 0 4px rgba(213,103,103,.12); }
 .retry { margin-top: 14px; border: 1px solid var(--line); border-radius: 999px; background: transparent; color: var(--ink); padding: 8px 16px; cursor: pointer; }

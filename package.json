@@ -14,6 +14,7 @@
     "devices": "node --experimental-strip-types scripts/devices.ts",
     "capture:check": "node --experimental-strip-types scripts/capture-check.ts",
     "ptt": "node --experimental-strip-types scripts/ptt.ts",
+    "diagnostics": "node --experimental-strip-types scripts/diagnostics.ts",
     "dev:web": "vite --config apps/web/vite.config.ts",
     "build:web": "vite build --config apps/web/vite.config.ts",
     "fixture:build": "node --experimental-strip-types scripts/build-public-fixture.ts",
