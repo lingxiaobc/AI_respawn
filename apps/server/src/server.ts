@@ -49,6 +49,9 @@ class BrowserSession {
     this.#provider.addEventListener("provider-event", (raw) => {
       this.#onProviderEvent((raw as CustomEvent<ServerEvent>).detail);
     });
+    this.#provider.addEventListener("provider-audio", (raw) => {
+      this.#onProviderAudio(raw);
+    });
     this.#provider.addEventListener("client-error", (raw) => {
       const error = (raw as CustomEvent<Error>).detail;
       this.#fail("UPSTREAM_CLIENT", error.message);
@@ -121,15 +124,6 @@ class BrowserSession {
     if (event.type === "conversation.item.input_audio_transcription.completed") {
       this.#sendJson({ type: "turn", event: "asr.completed", round: this.#round });
     }
-    if (event.type === "response.output_audio.delta" && typeof event.delta === "string") {
-      if (this.#state === "thinking") this.#transition("speaking");
-      const pcm = Buffer.from(event.delta, "base64");
-      if (this.#browser.bufferedAmount > MAX_BUFFERED_BYTES) {
-        this.#fail("BROWSER_BACKPRESSURE", "Browser audio queue exceeded 1 MiB");
-        return;
-      }
-      if (this.#browser.readyState === WebSocket.OPEN) this.#browser.send(pcm, { binary: true });
-    }
     if (event.type === "response.output_audio.done") {
       this.#sendJson({ type: "turn", event: "audio.done", round: this.#round });
     }
@@ -138,6 +132,16 @@ class BrowserSession {
       this.#sendJson({ type: "turn", event: "response.done", round: this.#round });
       this.#maybeReady();
     }
+  }
+
+  #onProviderAudio(raw: Event): void {
+    if (this.#state === "thinking") this.#transition("speaking");
+    const pcm = Buffer.from((raw as CustomEvent<Uint8Array>).detail);
+    if (this.#browser.bufferedAmount > MAX_BUFFERED_BYTES) {
+      this.#fail("BROWSER_BACKPRESSURE", "Browser audio queue exceeded 1 MiB");
+      return;
+    }
+    if (this.#browser.readyState === WebSocket.OPEN) this.#browser.send(pcm, { binary: true });
   }
 
   #maybeReady(): void {

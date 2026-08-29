@@ -90,14 +90,16 @@ client.addEventListener("provider-event", (raw) => {
   if (event.type === "conversation.item.input_audio_transcription.completed" && active) {
     active.asrCompleted = true;
   }
-  if (event.type === "response.output_audio.delta" && typeof event.delta === "string" && active && playback) {
-    const pcm = Buffer.from(event.delta, "base64");
-    active.firstProviderAudioAt ??= performance.now();
-    active.outputBytes += pcm.byteLength;
-    playback.enqueue(pcm);
-    state = "speaking";
-  }
   if (event.type === "error") console.error(JSON.stringify(safeEventSummary(event)));
+});
+
+client.addEventListener("provider-audio", (raw) => {
+  if (!active || !playback) return;
+  const pcm = Buffer.from((raw as CustomEvent<Uint8Array>).detail);
+  active.firstProviderAudioAt ??= performance.now();
+  active.outputBytes += pcm.byteLength;
+  playback.enqueue(pcm);
+  state = "speaking";
 });
 
 client.addEventListener("client-error", (raw) => {

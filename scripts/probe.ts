@@ -37,10 +37,10 @@ if (!apiKey) {
   client.addEventListener("provider-event", (raw) => {
     const event = (raw as CustomEvent<ServerEvent>).detail;
     console.log(JSON.stringify({ t_ms: Math.round(performance.now() - startedAt), ...safeEventSummary(event) }));
-    if (event.type === "response.output_audio.delta" && typeof event.delta === "string") {
-      if (!firstAudioAt) firstAudioAt = performance.now();
-      outputChunks.push(Buffer.from(event.delta, "base64"));
-    }
+  });
+  client.addEventListener("provider-audio", (raw) => {
+    if (!firstAudioAt) firstAudioAt = performance.now();
+    outputChunks.push(Buffer.from((raw as CustomEvent<Uint8Array>).detail));
   });
   client.addEventListener("client-error", (raw) => {
     const error = (raw as CustomEvent<Error>).detail;

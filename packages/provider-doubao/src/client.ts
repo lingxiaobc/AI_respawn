@@ -1,4 +1,5 @@
 import WebSocket from "ws";
+import { StreamingFloat32PcmDecoder } from "../../audio/src/pcm.ts";
 import {
   createAudioAppendEvent,
   createCloseEvent,
@@ -24,6 +25,7 @@ export class DoubaoRealtimeClient extends EventTarget {
   #socket?: WebSocket;
   #sessionCreated = false;
   #closed = false;
+  #outputDecoder = new StreamingFloat32PcmDecoder();
 
   constructor(options: DoubaoClientOptions) {
     super();
@@ -128,6 +130,23 @@ export class DoubaoRealtimeClient extends EventTarget {
       try {
         const event = parseServerEvent(data.toString("utf8"));
         this.dispatchEvent(new CustomEvent("provider-event", { detail: event }));
+        if (event.type === "response.output_audio.delta" && typeof event.delta === "string") {
+          try {
+            const pcm = this.#outputDecoder.push(Buffer.from(event.delta, "base64"));
+            if (pcm.byteLength > 0) {
+              this.dispatchEvent(new CustomEvent("provider-audio", { detail: pcm }));
+            }
+          } catch (error) {
+            this.dispatchEvent(new CustomEvent("client-error", { detail: error }));
+          }
+        }
+        if (event.type === "response.output_audio.done") {
+          try {
+            this.#outputDecoder.finish();
+          } catch (error) {
+            this.dispatchEvent(new CustomEvent("client-error", { detail: error }));
+          }
+        }
       } catch (error) {
         this.dispatchEvent(new CustomEvent("client-error", { detail: error }));
       }

@@ -29,7 +29,7 @@
 - 每个上行事件携带唯一 `event_id`，用于与 `X-Tt-Logid` 一起排障。
 - 输入：PCM、16,000 Hz、单声道、int16、小端序；音频字节 Base64 后放入 `input_audio_buffer.append.audio`。
 - 推荐输入分包：20 ms，即每包 `16000 × 0.02 × 2 = 640` 字节。
-- 输出：本 demo 显式请求 PCM、24,000 Hz、单声道、16 bit、小端序；Base64 数据位于 `response.output_audio.delta.delta`。
+- 输出：服务端通过 `response.output_audio.delta.delta` 返回 PCM Base64。当前账号的真实 payload 经验证为 Float32LE；provider adapter 必须先规范化为本项目统一的 24,000 Hz、单声道、PCM16LE，再交给播放端。未确认格式时不得直接播放原始 delta。
 - 默认输出也可为 OGG-Opus，但第一版使用 PCM 以便离线核验、排队播放和样本计数。
 
 ## Push-to-Talk 事件顺序
@@ -94,7 +94,7 @@ shutdown
 | `conversation.item.input_audio_transcription.*` | 仅记录文本/状态，不作为音频闭环的必要条件 |
 | `response.output_text.delta/done` | 用于可观察调试 |
 | `response.output_audio.started` | 记录首音频事件时间 |
-| `response.output_audio.delta` | Base64 解码并按到达顺序追加到播放/文件队列 |
+| `response.output_audio.delta` | provider adapter Base64 解码、Float32LE→PCM16LE 规范化，并按到达顺序发出 `provider-audio` |
 | `response.output_audio.done` | 封口本轮 PCM，并计算音频时长 |
 | `response.done` | 记录用量和总轮次指标 |
 | `session.closed` | 收到后才关闭底层 WebSocket |

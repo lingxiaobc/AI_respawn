@@ -78,8 +78,8 @@ any live state -> closing -> closed
 | --- | --- | --- |
 | Browser capture -> gateway | PCM16 LE, mono, 16 kHz | 20 ms / 640 bytes |
 | Gateway -> Doubao | Base64 inside JSON text frame | 保持输入顺序；不并行发送 |
-| Doubao -> gateway | PCM16 LE, mono, 24 kHz | 按 `delta` 到达顺序 |
-| Gateway -> Browser | Binary PCM payload + JSON lifecycle events | 每会话独立队列 |
+| Doubao -> provider adapter | observed Float32LE delta → canonical PCM16LE | 按 `delta` 到达顺序；尾部和非法样本显式失败 |
+| Gateway -> Browser | Binary canonical PCM16 payload + JSON lifecycle events | 每会话独立队列 |
 | Browser playback | Float32 scheduled at 24 kHz logical timeline | 单调时钟，禁止重叠与串轮 |
 
 ## 可观察指标
