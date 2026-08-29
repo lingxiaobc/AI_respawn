@@ -1,0 +1,42 @@
+{
+  "name": "ai-respawn-ptt-demo",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit",
+    "dev": "node --experimental-strip-types scripts/dev.ts",
+    "server": "node --experimental-strip-types apps/server/src/server.ts",
+    "build": "npm run check && npm run build:web",
+    "gateway:probe": "node --experimental-strip-types scripts/gateway-probe.ts",
+    "test": "node --experimental-strip-types --test packages/**/*.test.ts",
+    "probe": "node --experimental-strip-types scripts/probe.ts",
+    "devices": "node --experimental-strip-types scripts/devices.ts",
+    "capture:check": "node --experimental-strip-types scripts/capture-check.ts",
+    "ptt": "node --experimental-strip-types scripts/ptt.ts",
+    "dev:web": "vite --config apps/web/vite.config.ts",
+    "build:web": "vite build --config apps/web/vite.config.ts",
+    "fixture:build": "node --experimental-strip-types scripts/build-public-fixture.ts",
+    "fixture:inspect": "node --experimental-strip-types scripts/inspect-fixture.ts",
+    "output:inspect": "node --experimental-strip-types scripts/inspect-output.ts"
+  },
+  "engines": {
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@picovoice/pvrecorder-node": "^1.2.9",
+    "@picovoice/pvspeaker-node": "^1.0.3",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "ws": "^8.21.3"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0",
+    "@types/react": "^19.2.18",
+    "@types/react-dom": "^19.2.5",
+    "@types/ws": "^8.18.1",
+    "@vitejs/plugin-react": "^6.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.2.2"
+  }
+}
