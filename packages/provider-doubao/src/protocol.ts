@@ -81,17 +81,28 @@ export function parseServerEvent(raw: string): ServerEvent {
 }
 
 export function safeEventSummary(event: ServerEvent) {
+  const nestedError = isRecord(event.error) ? event.error : undefined;
+  const stringField = (value: unknown): string | undefined =>
+    typeof value === "string" && value.length <= 500 ? value : undefined;
+  const statusCode =
+    typeof event.status_code === "number" || typeof event.status_code === "string"
+      ? event.status_code
+      : undefined;
   return {
     type: event.type,
     event_id: typeof event.event_id === "string" ? event.event_id : undefined,
-    status_code:
-      typeof event.status_code === "number" || typeof event.status_code === "string"
-        ? event.status_code
-        : undefined,
-    message: typeof event.message === "string" ? event.message : undefined,
+    status_code: statusCode,
+    message: stringField(event.message) ?? stringField(nestedError?.message),
+    error_type: stringField(nestedError?.type),
+    error_code: stringField(nestedError?.code),
+    error_param: stringField(nestedError?.param),
     audio_bytes:
       event.type === "response.output_audio.delta" && typeof event.delta === "string"
         ? Buffer.from(event.delta, "base64").byteLength
         : undefined,
   };
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }

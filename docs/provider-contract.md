@@ -40,9 +40,9 @@ WebSocket open (X-Api-Key)
   <- session.created
   -> input_audio_mute.commit          # 初始未采集，维持模型状态
 
-pointer down
+local speech confirmed (about 200 ms voiced)
   -> input_audio_unmute.commit
-  -> input_audio_buffer.append × N    # 640-byte PCM frames
+  -> input_audio_buffer.append × N    # up to 500 ms pre-roll, then 640-byte PCM frames
 
 pointer up / cancel
   -> input_audio_buffer.commit        # 强制判停，即原 EndASR
@@ -60,7 +60,7 @@ shutdown
   -> close WebSocket
 ```
 
-模型依赖上行音频流保活。麦克风停止发送时必须显式发送 `input_audio_mute.commit`；恢复时发送 `input_audio_unmute.commit`。直接断开而未先完成 `session.close/session.closed` 会触发 `ContextCanceled`（官方文档列出的错误码 `55000001`）。
+本项目在本地确认有效语音前不创建 provider round，因此不会用上游连接承载无界静音等待。轮次中麦克风停止发送时必须显式发送 `input_audio_mute.commit`；恢复时发送 `input_audio_unmute.commit`。直接断开而未先完成 `session.close/session.closed` 会触发 `ContextCanceled`（官方文档列出的错误码 `55000001`）。
 
 ## 最小 session.create
 
@@ -102,7 +102,7 @@ shutdown
 
 ## 诊断日志边界
 
-provider adapter 只向上层提供结构化事件摘要和规范化音频计数。网关、探针和 CLI 将摘要写入本地 JSONL：记录事件类型、event ID、可得的 `X-Tt-Logid`、状态码、关闭信息、轮次耗时和字节/分片计数；不记录鉴权头、完整响应体、Base64、音频内容或文本内容。
+provider adapter 只向上层提供结构化事件摘要和规范化音频计数。网关、探针和 CLI 将摘要写入本地 JSONL：记录事件类型、event ID、可得的 `X-Tt-Logid`、状态码、嵌套 `error.type/code/message/param`、关闭信息、阶段耗时和字节/分片计数；不记录鉴权头、完整响应体、Base64、音频内容或文本内容。
 
 ## Gate 1 前仍待用户完成
 

@@ -125,3 +125,45 @@ test("logger degrades when its directory is not writable", () => {
 test("message sanitizer is bounded", () => {
   assert.ok(sanitizeMessage("x".repeat(1_000)).length <= 500);
 });
+
+test("stage diagnostics retain safe timing and nested provider fields", () => {
+  const record = createDiagnosticRecord({
+    event: "provider_event",
+    component: "provider",
+    diagnostic_id: "deadbeef",
+    session_id: "sess-test",
+    round: 8,
+    state: "listening",
+    provider_event_type: "error",
+    provider_error_type: "server_error",
+    provider_error_code: "input_audio_timeout",
+    provider_error_param: "input_audio_buffer",
+    provider_message: "input audio buffer timed out",
+    elapsed_ms: 55_698,
+    phase_duration_ms: 55_698,
+    event_direction: "inbound",
+    last_milestone: "first_audio_sent",
+  });
+  assert.equal(record.schema_version, 2);
+  assert.equal(record.provider_error_code, "input_audio_timeout");
+  assert.equal(record.event_direction, "inbound");
+  assert.equal(record.elapsed_ms, 55_698);
+  assert.throws(
+    () => createDiagnosticRecord({
+      event: "provider_event",
+      component: "provider",
+      diagnostic_id: "deadbeef",
+      session_id: "sess-test",
+      event_direction: "sideways" as "inbound",
+    }),
+    /event_direction/,
+  );
+  const redacted = createDiagnosticRecord({
+    event: "provider_event",
+    component: "provider",
+    diagnostic_id: "deadbeef",
+    session_id: "sess-test",
+    provider_message: "Authorization=secret response_body=YWJj",
+  });
+  assert.equal(redacted.provider_message, "[REDACTED] [REDACTED]");
+});

@@ -16,6 +16,9 @@ import { loadLocalEnv } from "../../../scripts/env.ts";
 const PORT = Number.parseInt(process.env.PORT ?? "8787", 10);
 const MAX_BUFFERED_BYTES = 1_048_576;
 const INPUT_FRAME_BYTES = 640;
+const LISTENING_TIMEOUT_MS = 35_000;
+const THINKING_TIMEOUT_MS = 20_000;
+const SPEAKING_TIMEOUT_MS = 120_000;
 
 await loadLocalEnv();
 const apiKey = process.env.DOUBAO_API_KEY?.trim();
@@ -52,6 +55,15 @@ class BrowserSession {
   #errorLogged = false;
   #browserCloseCode?: number;
   #browserCloseReason?: string;
+  #stateEnteredAt = performance.now();
+  #phaseTimer?: NodeJS.Timeout;
+  #lastMilestone?: string;
+  #lastAudioAt = 0;
+  #providerEventCount = 0;
+  #providerErrorType?: string;
+  #providerErrorCode?: string;
+  #providerErrorParam?: string;
+  #providerMessage?: string;
 
   constructor(browser: WebSocket) {
     this.#browser = browser;
@@ -113,6 +125,7 @@ class BrowserSession {
     this.#closed = true;
     if (!["closing", "closed"].includes(this.#state)) this.#transition("closing");
     await this.#provider.close().catch(() => undefined);
+    if (this.#phaseTimer) clearTimeout(this.#phaseTimer);
     this.#state = "closed";
     this.#sendJson({ type: "state", state: "closed" });
     diagnostics.write({
@@ -127,6 +140,15 @@ class BrowserSession {
       provider_event_id: this.#lastProviderEventId,
       provider_logid: this.#providerLogId,
       provider_status: this.#providerStatus,
+      provider_event_count: this.#providerEventCount,
+      audio_idle_ms: this.#lastAudioAt ? Math.round(performance.now() - this.#lastAudioAt) : undefined,
+      last_milestone: this.#lastMilestone,
+      elapsed_ms: this.#roundStartedAt ? Math.round(performance.now() - this.#roundStartedAt) : undefined,
+      phase_duration_ms: Math.round(performance.now() - this.#stateEnteredAt),
+      provider_error_type: this.#providerErrorType,
+      provider_error_code: this.#providerErrorCode,
+      provider_error_param: this.#providerErrorParam,
+      provider_message: this.#providerMessage,
     });
     if (this.#browser.readyState === WebSocket.OPEN) this.#browser.close(1000, "session closed");
   }
@@ -139,6 +161,8 @@ class BrowserSession {
         if (pcm.byteLength !== INPUT_FRAME_BYTES) throw new Error("Input frame must be exactly 640 bytes");
         this.#inputFrames += 1;
         this.#inputBytes += pcm.byteLength;
+        this.#lastAudioAt = performance.now();
+        if (this.#inputFrames === 1) this.#markMilestone("first_audio_sent");
         this.#provider.appendAudio(pcm);
         return;
       }
@@ -158,12 +182,20 @@ class BrowserSession {
         this.#asrCompleted = false;
         this.#responseDone = false;
         this.#playbackDone = false;
+        this.#lastMilestone = undefined;
+        this.#providerEventCount = 0;
+        this.#providerErrorType = undefined;
+        this.#providerErrorCode = undefined;
+        this.#providerErrorParam = undefined;
+        this.#providerMessage = undefined;
         diagnostics.write({
           event: "round_started",
           component: "gateway",
           diagnostic_id: this.#diagnosticId,
           session_id: this.#sessionId,
           round: this.#round,
+          timer_name: "listening",
+          deadline_ms: LISTENING_TIMEOUT_MS,
         });
         this.#provider.unmute();
         this.#transition("listening");
@@ -171,21 +203,27 @@ class BrowserSession {
         if (this.#state !== "listening") throw new Error(`Cannot commit PTT from ${this.#state}`);
         this.#pttUpAt = performance.now();
         this.#provider.commitTurn();
+        this.#markMilestone("commit_sent");
         this.#transition("thinking");
       } else if (control.type === "playback.done") {
         if (this.#state !== "speaking") throw new Error(`Playback cannot finish from ${this.#state}`);
         this.#playbackDone = true;
         this.#maybeReady();
       } else if (control.type === "client.diagnostic") {
+        const isLocalMilestone = control.code.startsWith("LOCAL_");
+        if (isLocalMilestone) this.#lastMilestone = control.code.toLowerCase();
         diagnostics.write({
-          event: "error",
+          event: isLocalMilestone ? "milestone" : "error",
           component: "browser",
+          level: isLocalMilestone ? "info" : "error",
           diagnostic_id: this.#diagnosticId,
           session_id: this.#sessionId,
           round: this.#round || undefined,
           state: this.#state,
           code: control.code,
           message: control.message,
+          last_milestone: isLocalMilestone ? control.code.toLowerCase() : this.#lastMilestone,
+          elapsed_ms: this.#roundStartedAt ? Math.round(performance.now() - this.#roundStartedAt) : undefined,
         });
       } else {
         void this.close();
@@ -197,12 +235,39 @@ class BrowserSession {
 
   #onProviderEvent(event: ServerEvent): void {
     if (typeof event.event_id === "string") this.#lastProviderEventId = event.event_id;
+    this.#providerEventCount += 1;
+    const summary = safeEventSummary(event);
+    if (event.type !== "response.output_audio.delta") {
+      diagnostics.write({
+        event: "provider_event",
+        component: "provider",
+        diagnostic_id: this.#diagnosticId,
+        session_id: this.#sessionId,
+        round: this.#round || undefined,
+        state: this.#state,
+        provider_event_id: summary.event_id,
+        provider_event_type: summary.type,
+        provider_status: summary.status_code,
+        provider_error_type: summary.error_type,
+        provider_error_code: summary.error_code,
+        provider_error_param: summary.error_param,
+        provider_message: summary.message,
+        event_direction: "inbound",
+      });
+    }
     if (event.type === "error") {
-      const summary = safeEventSummary(event);
       this.#providerStatus = summary.status_code;
-      this.#fail("UPSTREAM_EVENT", summary.message ?? "Provider returned an error");
+      this.#providerErrorType = summary.error_type;
+      this.#providerErrorCode = summary.error_code;
+      this.#providerErrorParam = summary.error_param;
+      this.#providerMessage = summary.message;
+      this.#fail("UPSTREAM_EVENT", summary.message ?? summary.error_code ?? "Provider returned an error");
       return;
     }
+    if (event.type === "input_audio_buffer.committed") this.#markMilestone("input_committed");
+    if (event.type === "conversation.item.input_audio_transcription.completed") this.#markMilestone("asr_completed");
+    if (event.type === "response.output_audio.done") this.#markMilestone("audio_done");
+    if (event.type === "response.done") this.#markMilestone("response_done");
     if (event.type === "conversation.item.input_audio_transcription.completed") {
       this.#asrCompleted = true;
       this.#sendJson({ type: "turn", event: "asr.completed", round: this.#round });
@@ -219,6 +284,7 @@ class BrowserSession {
   }
 
   #onProviderAudio(raw: Event): void {
+    if (this.#closed || ["error", "closing", "closed"].includes(this.#state)) return;
     if (this.#state === "thinking") this.#transition("speaking");
     const pcm = Buffer.from((raw as CustomEvent<Uint8Array>).detail);
     this.#firstProviderAudioAt ||= performance.now();
@@ -254,6 +320,11 @@ class BrowserSession {
         provider_event_id: this.#lastProviderEventId,
         provider_logid: this.#providerLogId,
         provider_status: this.#providerStatus,
+        provider_event_count: this.#providerEventCount,
+        audio_idle_ms: this.#lastAudioAt ? Math.round(finishedAt - this.#lastAudioAt) : undefined,
+        last_milestone: this.#lastMilestone,
+        phase_duration_ms: Math.round(finishedAt - this.#stateEnteredAt),
+        elapsed_ms: this.#roundStartedAt ? Math.round(finishedAt - this.#roundStartedAt) : undefined,
       });
     }
   }
@@ -262,13 +333,73 @@ class BrowserSession {
     if (next !== this.#state && !canTransition(this.#state, next)) {
       throw new Error(`Invalid gateway transition ${this.#state} -> ${next}`);
     }
+    const previous = this.#state;
+    const now = performance.now();
+    const phaseDuration = Math.round(now - this.#stateEnteredAt);
     this.#state = next;
+    this.#stateEnteredAt = now;
+    if (this.#phaseTimer) clearTimeout(this.#phaseTimer);
+    this.#phaseTimer = undefined;
+    diagnostics.write({
+      event: "state_transition",
+      component: "gateway",
+      diagnostic_id: this.#diagnosticId,
+      session_id: this.#sessionId,
+      round: this.#round || undefined,
+      state: next,
+      state_from: previous,
+      state_to: next,
+      phase_duration_ms: phaseDuration,
+      elapsed_ms: this.#roundStartedAt ? Math.round(now - this.#roundStartedAt) : undefined,
+      last_milestone: this.#lastMilestone,
+    });
     this.#sendJson({ type: "state", state: next, round: this.#round || undefined });
+    const deadline = next === "listening"
+      ? LISTENING_TIMEOUT_MS
+      : next === "thinking"
+        ? THINKING_TIMEOUT_MS
+        : next === "speaking" ? SPEAKING_TIMEOUT_MS : undefined;
+    if (deadline !== undefined) {
+      this.#phaseTimer = setTimeout(() => {
+        const message = `${next} phase exceeded ${deadline}ms`;
+        this.#fail("UPSTREAM_PHASE_TIMEOUT", message, {
+          timer_name: next,
+          deadline_ms: deadline,
+          phase_duration_ms: Math.round(performance.now() - this.#stateEnteredAt),
+        });
+      }, deadline);
+    }
   }
 
-  #fail(code: string, message: string): void {
+  #fail(code: string, message: string, extra: Partial<Parameters<typeof diagnostics.write>[0]> = {}): void {
     if (this.#state !== "error" && !["closing", "closed"].includes(this.#state)) {
       this.#errorLogged = true;
+      if (this.#round > 0) {
+        diagnostics.write({
+          event: "round_aborted",
+          component: "gateway",
+          diagnostic_id: this.#diagnosticId,
+          session_id: this.#sessionId,
+          round: this.#round,
+          state: this.#state,
+          result: "aborted",
+          code,
+          message,
+          provider_event_id: this.#lastProviderEventId,
+          provider_logid: this.#providerLogId,
+          provider_status: this.#providerStatus,
+          provider_event_count: this.#providerEventCount,
+          audio_idle_ms: this.#lastAudioAt ? Math.round(performance.now() - this.#lastAudioAt) : undefined,
+          provider_error_type: this.#providerErrorType,
+          provider_error_code: this.#providerErrorCode,
+          provider_error_param: this.#providerErrorParam,
+          provider_message: this.#providerMessage,
+          last_milestone: this.#lastMilestone,
+          elapsed_ms: this.#roundStartedAt ? Math.round(performance.now() - this.#roundStartedAt) : undefined,
+          phase_duration_ms: Math.round(performance.now() - this.#stateEnteredAt),
+          ...extra,
+        });
+      }
       diagnostics.write({
         event: "error",
         component: "gateway",
@@ -281,8 +412,18 @@ class BrowserSession {
         provider_event_id: this.#lastProviderEventId,
         provider_logid: this.#providerLogId,
         provider_status: this.#providerStatus,
+        provider_event_count: this.#providerEventCount,
+        audio_idle_ms: this.#lastAudioAt ? Math.round(performance.now() - this.#lastAudioAt) : undefined,
+        provider_error_type: this.#providerErrorType,
+        provider_error_code: this.#providerErrorCode,
+        provider_error_param: this.#providerErrorParam,
+        provider_message: this.#providerMessage,
+        last_milestone: this.#lastMilestone,
+        elapsed_ms: this.#roundStartedAt ? Math.round(performance.now() - this.#roundStartedAt) : undefined,
+        phase_duration_ms: Math.round(performance.now() - this.#stateEnteredAt),
+        ...extra,
       });
-      this.#state = "error";
+      this.#transition("error");
       this.#sendJson({ type: "error", state: "error", code, message });
     }
     void this.close();
@@ -297,6 +438,57 @@ class BrowserSession {
   #onProviderDiagnostic(detail: ProviderDiagnostic): void {
     if (detail.log_id) this.#providerLogId = detail.log_id;
     if (detail.status_code !== undefined) this.#providerStatus = detail.status_code;
+    if (detail.kind === "event_sent") {
+      diagnostics.write({
+        event: "provider_event",
+        component: "provider",
+        diagnostic_id: this.#diagnosticId,
+        session_id: this.#sessionId,
+        round: this.#round || undefined,
+        state: this.#state,
+        provider_event_id: detail.event_id,
+        provider_event_type: detail.event_type,
+        event_direction: "outbound",
+        event_size_bytes: detail.event_size_bytes,
+      });
+      return;
+    }
+    diagnostics.write({
+      event: detail.kind === "socket_error" ? "error" : "provider_event",
+      component: "provider",
+      level: detail.kind === "socket_error" || detail.kind === "handshake_rejected" ? "error" : "warn",
+      diagnostic_id: this.#diagnosticId,
+      session_id: this.#sessionId,
+      round: this.#round || undefined,
+      state: this.#state,
+      code: detail.kind.toUpperCase(),
+      message: detail.message,
+      provider_logid: detail.log_id,
+      provider_status: detail.status_code,
+      close_code: detail.close_code,
+      close_reason: detail.close_reason,
+      provider_event_type: detail.kind,
+      event_direction: "inbound",
+    });
+  }
+
+  #markMilestone(name: string): void {
+    this.#lastMilestone = name;
+    diagnostics.write({
+      event: "milestone",
+      component: "gateway",
+      diagnostic_id: this.#diagnosticId,
+      session_id: this.#sessionId,
+      round: this.#round || undefined,
+      state: this.#state,
+      code: name,
+      elapsed_ms: this.#roundStartedAt ? Math.round(performance.now() - this.#roundStartedAt) : undefined,
+      last_milestone: name,
+      input_frames: this.#inputFrames || undefined,
+      input_bytes: this.#inputBytes || undefined,
+      output_chunks: this.#outputChunks || undefined,
+      output_pcm_bytes: this.#outputBytes || undefined,
+    });
   }
 }
 

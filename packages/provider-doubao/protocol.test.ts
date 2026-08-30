@@ -47,3 +47,34 @@ test("safe summaries never echo audio base64", () => {
   assert.equal(summary.audio_bytes, 3);
   assert.equal("delta" in summary, false);
 });
+
+test("safe summaries preserve nested provider error diagnostics", () => {
+  const summary = safeEventSummary({
+    type: "error",
+    event_id: "event_err",
+    error: {
+      type: "server_error",
+      code: "input_audio_timeout",
+      message: "input audio buffer timed out",
+      param: "input_audio_buffer",
+    },
+  });
+  assert.deepEqual(
+    {
+      type: summary.type,
+      event_id: summary.event_id,
+      error_type: summary.error_type,
+      error_code: summary.error_code,
+      error_param: summary.error_param,
+      message: summary.message,
+    },
+    {
+      type: "error",
+      event_id: "event_err",
+      error_type: "server_error",
+      error_code: "input_audio_timeout",
+      error_param: "input_audio_buffer",
+      message: "input audio buffer timed out",
+    },
+  );
+});

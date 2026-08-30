@@ -9,6 +9,7 @@ import {
   createUnmuteEvent,
   DEFAULT_DOUBAO_URL,
   parseServerEvent,
+  safeEventSummary,
   type ServerEvent,
   type SessionConfig,
 } from "./protocol.ts";
@@ -21,12 +22,16 @@ export interface DoubaoClientOptions {
 }
 
 export interface ProviderDiagnostic {
-  kind: "handshake_rejected" | "socket_error" | "socket_closed";
+  kind: "handshake_rejected" | "socket_error" | "socket_closed" | "event_sent" | "close_timeout";
   status_code?: number;
   log_id?: string;
   close_code?: number;
   close_reason?: string;
   message?: string;
+  event_type?: string;
+  event_id?: string;
+  event_size_bytes?: number;
+  direction?: "inbound" | "outbound";
 }
 
 export class DoubaoRealtimeClient extends EventTarget {
@@ -70,7 +75,7 @@ export class DoubaoRealtimeClient extends EventTarget {
   appendAudio(pcm: Uint8Array): void {
     this.#requireReady();
     if (pcm.byteLength === 0) throw new Error("Cannot send an empty audio frame");
-    this.#send(createAudioAppendEvent(pcm));
+    this.#send(createAudioAppendEvent(pcm), false);
   }
 
   commitTurn(): void {
@@ -85,7 +90,16 @@ export class DoubaoRealtimeClient extends EventTarget {
 
     if (socket.readyState === WebSocket.OPEN && this.#sessionCreated) {
       this.#send(createCloseEvent());
-      await this.waitFor("session.closed").catch(() => undefined);
+      try {
+        await this.waitFor("session.closed", Math.min(this.#options.timeoutMs ?? 30_000, 5_000));
+      } catch (error) {
+        this.dispatchEvent(new CustomEvent<ProviderDiagnostic>("provider-diagnostic", {
+          detail: {
+            kind: "close_timeout",
+            message: error instanceof Error ? error.message : "Timed out waiting for session.closed",
+          },
+        }));
+      }
     }
     this.#closed = true;
     socket.close(1000, "client shutdown");
@@ -103,7 +117,9 @@ export class DoubaoRealtimeClient extends EventTarget {
         if (event.type === "error") {
           clearTimeout(timer);
           this.removeEventListener("provider-event", onEvent);
-          reject(new Error(`Provider error while waiting for ${type}`));
+          const summary = safeEventSummary(event);
+          const details = [summary.error_code, summary.error_type, summary.message].filter(Boolean).join(" ");
+          reject(new Error(`Provider error while waiting for ${type}${details ? `: ${details}` : ""}`));
           return;
         }
         if (event.type !== type) return;
@@ -119,11 +135,24 @@ export class DoubaoRealtimeClient extends EventTarget {
     if (!this.ready) throw new Error("Provider session is not ready");
   }
 
-  #send(value: unknown): void {
+  #send(value: unknown, trace = true): void {
     if (!this.#socket || this.#socket.readyState !== WebSocket.OPEN) {
       throw new Error("Provider WebSocket is not open");
     }
-    this.#socket.send(JSON.stringify(value));
+    const payload = JSON.stringify(value);
+    this.#socket.send(payload);
+    if (trace && value && typeof value === "object") {
+      const candidate = value as { type?: unknown; event_id?: unknown };
+      this.dispatchEvent(new CustomEvent<ProviderDiagnostic>("provider-diagnostic", {
+        detail: {
+          kind: "event_sent",
+          direction: "outbound",
+          event_type: typeof candidate.type === "string" ? candidate.type : undefined,
+          event_id: typeof candidate.event_id === "string" ? candidate.event_id : undefined,
+          event_size_bytes: Buffer.byteLength(payload, "utf8"),
+        },
+      }));
+    }
   }
 
   #wireMessages(socket: WebSocket): void {

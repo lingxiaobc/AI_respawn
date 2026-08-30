@@ -2,8 +2,12 @@ import { randomUUID } from "node:crypto";
 
 export const DIAGNOSTIC_EVENTS = [
   "session_started",
+  "state_transition",
   "round_started",
+  "milestone",
+  "provider_event",
   "round_completed",
+  "round_aborted",
   "error",
   "session_closed",
 ] as const;
@@ -32,8 +36,29 @@ export interface DiagnosticRecordInput {
   code?: string;
   message?: string;
   provider_event_id?: string;
+  provider_event_type?: string;
   provider_logid?: string;
   provider_status?: number | string;
+  provider_event_count?: number;
+  provider_error_type?: string;
+  provider_error_code?: string;
+  provider_error_param?: string;
+  provider_message?: string;
+  event_direction?: "inbound" | "outbound";
+  event_size_bytes?: number;
+  socket_ready_state?: string;
+  timer_name?: string;
+  deadline_ms?: number;
+  elapsed_ms?: number;
+  phase_duration_ms?: number;
+  pre_roll_frames?: number;
+  voiced_frames?: number;
+  silence_ms?: number;
+  audio_idle_ms?: number;
+  last_milestone?: string;
+  rms_min?: number;
+  rms_max?: number;
+  rms_avg?: number;
   close_code?: number;
   close_reason?: string;
   input_frames?: number;
@@ -46,7 +71,7 @@ export interface DiagnosticRecordInput {
 }
 
 export interface DiagnosticRecord extends DiagnosticRecordInput {
-  schema_version: 1;
+  schema_version: 2;
   ts: string;
   level: DiagnosticLevel;
 }
@@ -65,8 +90,29 @@ const ALLOWED_FIELDS = new Set<string>([
   "code",
   "message",
   "provider_event_id",
+  "provider_event_type",
   "provider_logid",
   "provider_status",
+  "provider_event_count",
+  "provider_error_type",
+  "provider_error_code",
+  "provider_error_param",
+  "provider_message",
+  "event_direction",
+  "event_size_bytes",
+  "socket_ready_state",
+  "timer_name",
+  "deadline_ms",
+  "elapsed_ms",
+  "phase_duration_ms",
+  "pre_roll_frames",
+  "voiced_frames",
+  "silence_ms",
+  "audio_idle_ms",
+  "last_milestone",
+  "rms_min",
+  "rms_max",
+  "rms_avg",
   "close_code",
   "close_reason",
   "input_frames",
@@ -117,7 +163,7 @@ export function createDiagnosticRecord(input: DiagnosticRecordInput, now = new D
   if (!input.diagnostic_id || !input.session_id) throw new Error("Diagnostic identity is required");
 
   const record: DiagnosticRecord = {
-    schema_version: 1,
+    schema_version: 2,
     ts: now.toISOString(),
     event: input.event,
     component: input.component,
@@ -132,14 +178,36 @@ export function createDiagnosticRecord(input: DiagnosticRecordInput, now = new D
     "state_to",
     "code",
     "provider_event_id",
+    "provider_event_type",
     "provider_logid",
     "close_reason",
+    "provider_error_type",
+    "provider_error_code",
+    "provider_error_param",
+    "provider_message",
+    "socket_ready_state",
+    "timer_name",
+    "last_milestone",
   ] as const;
+  const sanitizedStrings = new Set([
+    "close_reason",
+    "code",
+    "provider_message",
+    "provider_error_type",
+    "provider_error_code",
+    "provider_error_param",
+  ]);
   for (const field of strings) {
     const value = optionalString(input[field], field);
-    if (value !== undefined) record[field] = field === "close_reason" || field === "code" ? sanitizeMessage(value) : value;
+    if (value !== undefined) record[field] = sanitizedStrings.has(field) ? sanitizeMessage(value) : value;
   }
   if (input.message !== undefined) record.message = sanitizeMessage(input.message);
+  if (input.event_direction !== undefined) {
+    if (input.event_direction !== "inbound" && input.event_direction !== "outbound") {
+      throw new Error("Invalid diagnostic event_direction");
+    }
+    record.event_direction = input.event_direction;
+  }
 
   const numbers = [
     "round",
@@ -150,6 +218,18 @@ export function createDiagnosticRecord(input: DiagnosticRecordInput, now = new D
     "output_pcm_bytes",
     "commit_to_first_audio_ms",
     "round_duration_ms",
+    "event_size_bytes",
+    "deadline_ms",
+    "elapsed_ms",
+    "phase_duration_ms",
+    "pre_roll_frames",
+    "voiced_frames",
+    "silence_ms",
+    "rms_min",
+    "rms_max",
+    "rms_avg",
+    "provider_event_count",
+    "audio_idle_ms",
   ] as const;
   for (const field of numbers) {
     const value = optionalNumber(input[field], field);
