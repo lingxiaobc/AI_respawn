@@ -10,7 +10,7 @@ approved_scope: A-01,A-02,A-03,A-04,A-05,A-06,A-07,A-08,A-09
 approved_plan_digest: sha256:c6ae748e9c3ac7c93ad3ac8b09cc5cdacd3ba665825af6e53d110a7f61327b46
 routing_mode: auto
 selected_modules: M-01,M-02,M-03,M-04,M-06,M-07,M-08
-execution_status: IN_PROGRESS
+execution_status: COMPLETED
 created_at: 2026-08-31
 updated_at: 2026-08-31
 ---
@@ -56,11 +56,12 @@ updated_at: 2026-08-31
 - [x] T-02 | A-02 | 复制原图并建立嘴眼局部蒙版与不变区基线 | output: 原图副本、基础层和局部区域定义 | acceptance: 原图未覆盖且非目标区域像素可追溯
 - [x] T-03 | A-03 | 生成并筛选口腔、闭眼眼皮和隐藏皮肤补片 | output: 局部候选、选定补片和对照图 | acceptance: 蒙版外来自原图且预览无整脸漂移、双影或空洞
 - [x] T-04 | A-04 | 组装分层美术源、透明 PNG 和极限状态联系表 | output: 可导入分层包与状态预览 | acceptance: 嘴眼图层齐全且 0/0.5/1 极限组合无破图
-- [ ] T-05 | A-05 | 使用 Cubism Editor 建立三参数模型并导出运行时资产 | output: `.cmo3` 与 Web 运行时模型包 | acceptance: 官方 Web 样例可加载且参数范围和状态正确
-- [ ] T-06 | A-06 | 接入隔离的 Live2D Canvas 舞台和生命周期 | output: 独立舞台组件和模型适配层 | acceptance: 移动端布局可渲染且资源清理无每帧 React 重建
-- [ ] T-07 | A-07 | 建立固定参数 Stage 0 与随机眨眼验证 | output: 可运行参数演示和观感记录 | acceptance: 连续嘴动、150–300 ms 非固定眨眼和移动端观感通过
-- [ ] T-08 | A-08 | 将实际播放音频包络映射到嘴部参数 | output: 分析节点、平滑器和结束闭嘴控制 | acceptance: 嘴随实际声音运动、静音闭嘴且播放/半双工不回归
-- [ ] T-09 | A-09 | 运行完整回归、记录验收并同步文档 | output: 测试构建结果和验收报告 | acceptance: 资产检查、check/test/build、固定音频驱嘴通过并记录真实服务验证状态
+- [x] T-05 | A-05 | 核对最终 Cubism 源模型的三参数、组合状态和关闭重开持久性 | output: `portrait_cubism_final.cmo3` 与复验记录 | acceptance: 默认嘴 0、左右眼 1，三个参数在定点、往返和组合状态下独立且重开后保持
+- [x] T-06 | A-05 | 从最终 Cubism 源模型导出 Web 运行时资产并用官方样例验证 | output: `.moc3`、`.model3.json`、参数元数据、纹理和官方样例加载证据 | acceptance: 官方 Web 样例可加载且三参数范围、默认值和极限状态正确
+- [x] T-07 | A-06 | 接入隔离的 Live2D Canvas 舞台和生命周期 | output: 独立舞台组件和模型适配层 | acceptance: 移动端布局可渲染且资源清理无每帧 React 重建
+- [x] T-08 | A-07 | 建立固定参数 Stage 0 与随机眨眼验证 | output: 可运行参数演示和观感记录 | acceptance: 连续嘴动、150–300 ms 非固定眨眼和移动端观感通过
+- [x] T-09 | A-08 | 将实际播放音频包络映射到嘴部参数 | output: 分析节点、平滑器和结束闭嘴控制 | acceptance: 嘴随实际声音运动、静音闭嘴且播放/半双工不回归
+- [x] T-10 | A-09 | 运行完整回归、记录验收并同步文档 | output: 测试构建结果和验收报告 | acceptance: 资产检查、check/test/build、固定音频驱嘴通过并记录真实服务验证状态
 
 ## 发现与变更记录
 
@@ -75,9 +76,25 @@ updated_at: 2026-08-31
 - 2026-08-31 | `portrait_cubism_raw.psd` 已由用户在 Cubism Editor 5.3.03 FREE 实机导入成功；十个嘴眼状态图层和静态底图均可见，A-05 进入三项标准参数与透明度关键形配置阶段。
 - 2026-08-31 | 参数透明度测试暴露美术包缺陷：静态底图使用硬边透明洞，而嘴眼状态层在洞内已渐隐，导致 Cubism 白色画布透出形成椭圆白边；已生成不覆盖旧文件的 `portrait_cubism_seamless_raw.psd`，新遮罩在整个底图洞内保持 100% 覆盖、仅在洞外羽化，并以三种组合联系表完成目视验收。当前需以修正版重新导入后继续 A-05。
 - 2026-08-31 | 用户实机导入发现首个 seam 修正版的十层被错误重复命名为 `mouth_open_local`，且默认叠放显示闭眼张嘴混合态；该文件已标记停用。重新交付 `portrait_cubism_seamless_v2_raw.psd`：逐 scene 验证十个独立图层名、PSD 通道为 8-bit sRGB/None compression，重排使全部初始可见时由睁眼与闭嘴层覆盖，整图预览恢复中性原始肖像且无白色椭圆边。
+- 2026-09-01 | 续执行前状态校准：后续归档证据、规则登记表和 `portrait_cubism_final.cmo3` 证明三参数、组合状态及关闭重开验证已完成；将原 T-05 拆分为已完成的源模型持久性验收与未完成的 Web 运行时导出/官方样例闸门，未扩大 A-05 范围或降低验收。
+- 2026-09-01 | T-06 导出前检查：确认 Cubism Editor 5.3.03、SDK for Web 5-r.5 与官方 TypeScript 样例均位于 `P:\live2D`，但尚无肖像运行时包；已将 `docs/live2d-local-setup.md` 校正到最终 `.cmo3` 导出恢复点，并建立 `AI_output/live2d/runtime/` 目标布局。根据 Live2D 技能边界，等待用户在 Cubism GUI 手动导出后继续官方样例验证。
+- 2026-09-01 | T-06 / A-05 已验收：用户从 `portrait_cubism_runtime_ready.cmo3` 导出 `portrait.moc3`、`portrait.model3.json`、`portrait.cdi3.json` 与单张 2048 纹理；相对引用全部存在，MOC3 文件头与纹理结构有效。SDK for Web 5-r.5 官方 TypeScript Demo 成功渲染默认、单眼闭合、双眼闭合、张嘴及张嘴＋双眼闭合组合，最终控制台 0 error / 0 warning。Core 审计确认画布 636×821、10 个 Drawable，三参数范围 0..1、关键点 0/0.5/1，默认值为嘴 0、双眼 1。
+- 2026-09-01 | T-07 / A-06 已验收：新增隔离的 React Canvas 舞台、Cubism 适配层和 Vite 本地 SDK 资产桥；390×844 视口成功渲染。修复 Strict Mode 清理阶段主动丢失 WebGL context 的问题后，像素读回闸门通过且当前控制台无 WebGL 警告/错误。
+- 2026-09-01 | T-08 / A-07 已验收：双眼使用 75 ms 闭合、35 ms 停留、90 ms 张开的 200 ms 曲线，下一次间隔独立随机于 2.4–5.8 秒；浏览器七秒采样观察到多次过渡且最终返回 1，确定性测试覆盖完整曲线和非固定间隔。
+- 2026-09-01 | T-09 / A-08 已验收：所有实际播放 `AudioBufferSourceNode` 通过单一共享 `AnalyserNode` 到达原 destination，RMS、42 ms Attack 和 115 ms Release 驱动嘴部。开发期固定 PCM 通过同一路径采得 0.932 峰值并平滑回到 0；原排队、首声指标和半双工控制消息未改写。
+- 2026-09-01 | T-10 / A-09 已验收：资产引用与生产构建产物完整，`npm test` 42/42、`npm run build`、`git diff --check` 均通过；`docs/live2d-acceptance-report.md` 记录手机布局、WebGL 像素闸门、随机眨眼、固定音频包络、局部 AI 边界与许可边界。最终浏览器检查时本地语音网关未运行，因此未宣称新增真实服务轮次；同一实际播放/分析/闭嘴链已由固定 PCM 端到端通过。
 
 ## 完成标准
 
+- A-01 | evidence: `AI_output/live2d/ART_SPEC.md` 固化三参数、局部编辑边界与移动端停止条件。
+- A-02 | evidence: 源图副本 SHA-256 与用户源一致，眼口蒙版和静态锁定层保留在 `AI_output/live2d/`。
+- A-03 | evidence: 最终 donor 仅在批准蒙版内使用，组合预览蒙版外最大差异为 0。
+- A-04 | evidence: 十层 Cubism PSD、透明 PNG 层、参数映射和六状态联系表均已交付并通过静态检查。
+- A-05 | evidence: `portrait_cubism_runtime_ready.cmo3` 与 runtime export 已由官方 Web 样例加载，三参数及组合极限正确。
+- A-06 | evidence: `Live2DStage.tsx` 与 `PortraitRuntime.ts` 在 390×844 实页渲染，Strict Mode 清理与像素读回闸门通过。
+- A-07 | evidence: 浏览器捕获随机眨眼过渡且最终眼值回到 1，单元测试验证 200 ms 曲线与非固定间隔。
+- A-08 | evidence: 固定 PCM 通过实际共享 Analyser 播放链产生 0.932 峰值并平滑闭嘴到 0，既有协议未修改。
+- A-09 | evidence: `docs/live2d-acceptance-report.md` 记录资产、浏览器、42/42 测试、生产构建、许可边界及真实服务未验状态。
 - A-01 至 A-09 均有已验收任务和可检查证据。
 - 原图未被覆盖，AI 仅用于嘴眼局部隐藏区域，蒙版外不使用生成像素。
 - 分层美术、Cubism 源与运行时模型、Web 舞台、音频包络驱动和随机眨眼均可本地检查。

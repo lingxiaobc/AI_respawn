@@ -60,8 +60,19 @@ Generated full outputs are never used directly as the character portrait. The fi
 - `model/portrait_cubism_raw.psd`: current import candidate using uncompressed PSD channel data. This bypasses both the ZIP rejection and Cubism 5.3's failure to decode ImageMagick's RLE row-length table; it preserves the same ten named layers.
 - `model/portrait_cubism_seamless_v2_raw.psd`: current corrected Cubism import package. Its ten layer names are independently verified, its stacking order renders a neutral open-eye/closed-mouth default when all layers are initially visible, and its eye/mouth state masks fully cover the static base holes before feathering outside them.
 - `model/portrait_cubism_seamless_raw.psd`: superseded seam-test package; do not import because a PSD assembly error assigned `mouth_open_local` to every layer name and its default stack exposed the extreme states.
+- `model/portrait_cubism_final.cmo3`: verified three-parameter source checkpoint before texture-atlas work.
+- `model/portrait_cubism_runtime_ready.cmo3`: current non-destructive Cubism source checkpoint with the 2048×2048 atlas used by the Web export.
 - `model/portrait_master.psd`: eight-layer provenance/editing package.
 - `model/LAYER_MAP.md`: parameter-to-layer key mapping.
 - `preview/state-contact-sheet.png`: corrected six-state contact sheet using dedicated half-state donors rather than cross-fades.
 - `preview/mobile-320-composite.png`: intended small-screen extreme-state preview.
 - `work/preview-seamless-contact-sheet.png`: neutral, half and extreme-state verification for the corrected seam-safe layers.
+
+## Runtime export
+
+- `runtime/portrait/portrait.moc3`: Cubism 5 runtime model; MOC3 header verified.
+- `runtime/portrait/portrait.model3.json`: relative references for the MOC3 and texture.
+- `runtime/portrait/portrait.cdi3.json`: display-name metadata.
+- `runtime/portrait/portrait.2048/texture_00.png`: 2048×2048 atlas containing all ten ArtMeshes.
+
+The export was rendered with Cubism SDK for Web 5-r.5 in the official sample and the application adapter. Cubism Core and Framework source remain outside the repository and are included at serve/build time from the locally licensed SDK path.
