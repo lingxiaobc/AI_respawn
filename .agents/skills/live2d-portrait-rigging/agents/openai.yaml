@@ -1,0 +1,7 @@
+interface:
+  display_name: "Live2D Portrait Rigging"
+  short_description: "Reusable portrait-to-Cubism rigging workflow"
+  default_prompt: "Use $live2d-portrait-rigging to prepare this portrait for safe local-layer Live2D mouth and eye rigging."
+
+policy:
+  allow_implicit_invocation: true

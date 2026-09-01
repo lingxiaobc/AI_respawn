@@ -1,11 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { nextPlaybackStart } from "../../../packages/audio/src/resample.ts";
 import {
+  AudioEnvelopeFollower,
+  calculateRms,
+  rmsToMouthOpen,
+} from "../../../packages/audio/src/envelope.ts";
+import {
   DEFAULT_TURN_DETECTOR_CONFIG,
   TurnDetector,
   type TurnDetectorState,
 } from "../../../packages/audio/src/turn-detector.ts";
 import type { GatewayMessage, GatewayState } from "../../../packages/protocol/src/browser.ts";
+import { Live2DStage, type Live2DHandle } from "./live2d/Live2DStage.tsx";
 
 type UiState = GatewayState | "initializing";
 
@@ -36,6 +42,7 @@ const stages: Array<{ label: string; states: UiState[] }> = [
 
 const detectorConfig = DEFAULT_TURN_DETECTOR_CONFIG;
 const PRE_ROLL_FRAME_COUNT = 25;
+const live2dDebugEnabled = import.meta.env.DEV && new URLSearchParams(location.search).has("live2dDebug");
 
 export function App() {
   const [state, setState] = useState<UiState>("connecting");
@@ -57,6 +64,17 @@ export function App() {
   const playbackTimerRef = useRef<number | null>(null);
   const firstAudioSeenRef = useRef(false);
   const preRollRef = useRef<ArrayBuffer[]>([]);
+  const live2dRef = useRef<Live2DHandle | null>(null);
+  const playbackAnalyserRef = useRef<AnalyserNode | null>(null);
+  const mouthFrameRef = useRef<number | null>(null);
+  const mouthSamplesRef = useRef(new Float32Array(1024));
+  const mouthEnvelopeRef = useRef(new AudioEnvelopeFollower());
+  const mouthUpdatedAtRef = useRef(0);
+  const mouthDebugRef = useRef<HTMLOutputElement | null>(null);
+
+  const handleLive2DReady = useCallback((handle: Live2DHandle | null) => {
+    live2dRef.current = handle;
+  }, []);
 
   const updateState = useCallback((next: UiState) => {
     stateRef.current = next;
@@ -79,6 +97,27 @@ export function App() {
     }
   }, []);
 
+  const startMouthTracking = useCallback(() => {
+    if (mouthFrameRef.current !== null) return;
+    const updateMouth = (now: number) => {
+      const analyser = playbackAnalyserRef.current;
+      const context = audioContextRef.current;
+      const handle = live2dRef.current;
+      const elapsed = mouthUpdatedAtRef.current === 0 ? 16 : Math.min(100, now - mouthUpdatedAtRef.current);
+      mouthUpdatedAtRef.current = now;
+      let target = 0;
+      if (analyser && context && context.currentTime <= nextPlaybackAtRef.current + 0.05) {
+        analyser.getFloatTimeDomainData(mouthSamplesRef.current);
+        target = rmsToMouthOpen(calculateRms(mouthSamplesRef.current));
+      }
+      const mouthOpen = mouthEnvelopeRef.current.update(target, elapsed);
+      handle?.setParameters({ mouthOpen });
+      if (mouthDebugRef.current) mouthDebugRef.current.value = mouthOpen.toFixed(3);
+      mouthFrameRef.current = requestAnimationFrame(updateMouth);
+    };
+    mouthFrameRef.current = requestAnimationFrame(updateMouth);
+  }, []);
+
   const enqueuePlayback = useCallback((arrayBuffer: ArrayBuffer) => {
     const context = audioContextRef.current;
     if (!context) return;
@@ -89,7 +128,16 @@ export function App() {
     audio.copyToChannel(float32, 0);
     const source = context.createBufferSource();
     source.buffer = audio;
-    source.connect(context.destination);
+    let analyser = playbackAnalyserRef.current;
+    if (!analyser) {
+      analyser = context.createAnalyser();
+      analyser.fftSize = 1024;
+      analyser.smoothingTimeConstant = 0;
+      analyser.connect(context.destination);
+      playbackAnalyserRef.current = analyser;
+      startMouthTracking();
+    }
+    source.connect(analyser);
     const startsAt = nextPlaybackStart(context.currentTime, nextPlaybackAtRef.current);
     source.start(startsAt);
     nextPlaybackAtRef.current = startsAt + audio.duration;
@@ -100,7 +148,7 @@ export function App() {
       setLatencyMs(Math.round(performance.now() - endedAt + scheduleDelay));
     }
     updateState("speaking");
-  }, [updateState]);
+  }, [startMouthTracking, updateState]);
 
   const finishPlayback = useCallback(() => {
     const context = audioContextRef.current;
@@ -112,6 +160,23 @@ export function App() {
       playbackTimerRef.current = null;
     }, waitMs + 20);
   }, [sendControl]);
+
+  const playMouthDiagnostic = useCallback(async () => {
+    let context = audioContextRef.current;
+    if (!context) {
+      context = new AudioContext({ latencyHint: "interactive" });
+      audioContextRef.current = context;
+    }
+    await context.resume();
+    const sampleRate = 24_000;
+    const pcm = new Int16Array(sampleRate);
+    for (let index = 0; index < pcm.length; index += 1) {
+      const seconds = index / sampleRate;
+      const pulse = 0.18 + 0.82 * Math.sin(Math.PI * 3 * seconds) ** 2;
+      pcm[index] = Math.round(Math.sin(2 * Math.PI * 170 * seconds) * pulse * 14_000);
+    }
+    enqueuePlayback(pcm.buffer as ArrayBuffer);
+  }, [enqueuePlayback]);
 
   const commitDetectedTurn = useCallback(() => {
     if (stateRef.current !== "listening") return;
@@ -258,6 +323,11 @@ export function App() {
       disposed = true;
       socket.close(1000, "page unmounted");
       if (playbackTimerRef.current !== null) window.clearTimeout(playbackTimerRef.current);
+      if (mouthFrameRef.current !== null) cancelAnimationFrame(mouthFrameRef.current);
+      mouthFrameRef.current = null;
+      mouthEnvelopeRef.current.reset();
+      live2dRef.current?.setParameters({ mouthOpen: 0 });
+      playbackAnalyserRef.current?.disconnect();
       captureRef.current?.disconnect();
       streamRef.current?.getTracks().forEach((track) => track.stop());
       void audioContextRef.current?.close();
@@ -282,15 +352,23 @@ export function App() {
         <p className="eyebrow">AI REALTIME VOICE / AUTO ENDPOINTING</p>
         <h1 id="page-title">说一句，听见回应。</h1>
         <p className="lede">自动监听你的声音。检测到停顿后，约 1.2 秒内提交本轮，让每个状态都清楚可见。</p>
-        <div className="voice-control" aria-hidden="true">
-          <div className="orbit orbit-one" /><div className="orbit orbit-two" />
-          <div className="listen-core">
+        <div className="portrait-control">
+          <Live2DStage onReady={handleLive2DReady} />
+          <div className="portrait-state" aria-hidden="true">
             <span className="mic-glyph" />
-            <strong>{state === "listening" ? "自动聆听" : stateCopy[state]}</strong>
-            <small>{state === "listening" ? "SILENCE TO SEND" : "AUTO TURN DETECTION"}</small>
+            <div>
+              <strong>{state === "listening" ? "自动聆听" : stateCopy[state]}</strong>
+              <small>{state === "listening" ? "SILENCE TO SEND" : "AUTO TURN DETECTION"}</small>
+            </div>
           </div>
         </div>
         <div className="status-line" role="status" aria-live="polite"><span className="status-dot" />{statusText}</div>
+        {live2dDebugEnabled && (
+          <div className="live2d-debug">
+            <button type="button" onClick={() => void playMouthDiagnostic()}>播放口型测试音</button>
+            <output aria-label="口型参数" ref={mouthDebugRef}>0.000</output>
+          </div>
+        )}
         {diagnosticId && <div className="diagnostic-id">诊断 ID：{diagnosticId}</div>}
         {state === "error" && <button className="retry" type="button" onClick={() => location.reload()}>重新连接</button>}
       </section>
