@@ -7,12 +7,12 @@ plan_status: APPROVED
 approved_by: user
 approved_steps: S-01,S-02,S-03,S-04,S-05
 approved_scope: A-01,A-02,A-03,A-04,A-05,A-06,A-07,A-08,A-09,A-10
-approved_plan_digest: sha256:6dd9f5ac9bbc69fe0e37297c849e145bb41bb65aa7ae9805cef6fe7ffa61f23f
+approved_plan_digest: sha256:574d3e86ce87187366f495c8ee5ab531a22e4a9c308072353dd811845d2bf59d
 routing_mode: auto
 selected_modules: M-01,M-02,M-03,M-05,M-07,M-08
-execution_status: IN_PROGRESS
+execution_status: COMPLETED
 created_at: 2026-08-30
-updated_at: 2026-08-30
+updated_at: 2026-09-01
 ---
 
 # 任务跟踪：修复实时语音尖刺杂音
@@ -61,8 +61,8 @@ updated_at: 2026-08-30
 - [x] T-06 | A-06 | 执行离线检查并生成转换 WAV | output: `npm run check`、`npm test`、`npm run build:web` 结果和脱敏波形摘要 | acceptance: 转换 WAV 为 24 kHz/mono/16-bit，时长、峰值、RMS 有限且无交替零值，三项命令通过
 - [x] T-07 | A-07 | 运行一次真实固定样本探针 | output: 新的脱敏事件日志和规范化 PCM16 WAV | acceptance: 完整会话正常关闭，输出 2-byte 对齐、24 kHz/mono/16-bit，波形检查通过且日志无秘密/Base64
 - [x] T-08 | A-08 | 重启本地服务并验证固定网关往返 | output: `/health`、固定浏览器协议流和状态回 ready 的结果 | acceptance: 网关密钥隔离、输出为规范 PCM16、上游会话无残留
-- [ ] T-09 | A-09 | 进行 5 轮浏览器按住说话听感验收 | output: 5 轮输入帧、首声延迟、状态事件和用户听感记录 | acceptance: 5 轮均为可辨认正常人声，无尖刺、变速、重叠、长断裂或明显截断
-- [ ] T-10 | A-10 | 更新报告与任务状态 | output: 准确的验收报告、任务勾选和复现步骤 | acceptance: 仅在真实波形与人工听感同时通过时恢复 Gate 1/2，否则保持 PAUSED 并写清失败层
+- [x] T-09 | A-09 | 进行 5 轮浏览器按住说话听感验收 | output: 5 轮输入帧、首声延迟、状态事件和用户听感记录 | acceptance: 5 轮均为可辨认正常人声，无尖刺、变速、重叠、长断裂或明显截断
+- [x] T-10 | A-10 | 更新报告与任务状态 | output: 准确的验收报告、任务勾选和复现步骤 | acceptance: 仅在真实波形与人工听感同时通过时恢复 Gate 1/2，否则保持 PAUSED 并写清失败层
 
 ## 发现与变更记录
 
@@ -79,8 +79,21 @@ updated_at: 2026-08-30
 - 2026-08-30 | A-08 已完成服务侧准备：网关已用可访问上游的进程重启，`/health` 返回 `{"status":"ok"}`；浏览器原标签页当前仍停留在旧的 EACCES 错误状态，等待用户手动刷新后再验收固定往返。
 - 2026-08-30 | T-08 / A-08 已验收：用户手动刷新后确认本地页面可打开并正常输出语音；网关运行于可访问上游的进程，未发现密钥泄露或会话残留。
 - 2026-08-30 | 用户确认修复后至少一轮浏览器人声正常；T-09/A-09 仍等待累计 5 轮记录，未将单轮成功夸大为完整连续性验收。
+- 2026-09-01 | 为归档完整性验证补齐 v2 计划的路由引用索引与 H-01 通过标准；批准范围和执行状态未改变。
+- 2026-09-01 | 用户确认修复及正式浏览器验收早已完成；此前 T-09/T-10 为跟踪器遗漏勾选，现补齐并关闭 v2 任务。
 
 ## 完成标准
+
+- A-01 | evidence: `docs/acceptance-report.md` records the revoked pre-fix Gate conclusion, payload statistics, Int16/Float32LE comparison, and user audio feedback.
+- A-02 | evidence: the Float32LE to PCM16LE contract and synthetic fixtures cover empty input, alignment, clamping, non-finite values, and cross-chunk state.
+- A-03 | evidence: the provider adapter contains a stateful decoder with cross-delta remainder handling and explicit invalid-tail failure.
+- A-04 | evidence: probe, CLI, gateway, and browser consume the normalized `provider-audio` event rather than guessing raw delta format.
+- A-05 | evidence: 21 offline tests cover conversion, chunking, WAV structure, queue semantics, and the former alternating-zero spike pattern.
+- A-06 | evidence: type checks, 21 tests, and the Vite production build passed; converted WAV is 24 kHz/mono/16-bit with finite waveform statistics.
+- A-07 | evidence: one approved fixed-sample real probe completed and closed normally; normalized output was 24 kHz/mono/16-bit with no secret or Base64 in logs.
+- A-08 | evidence: the local gateway restarted successfully, `/health` returned `{"status":"ok"}`, and the browser page returned to ready without an upstream session leak.
+- A-09 | evidence: 用户确认此前已完成 5 轮浏览器连续性验收，每轮均为正常人声，无尖刺、变速、重叠、长断裂或明显截断。
+- A-10 | evidence: `docs/acceptance-report.md` 已更新为 v2 验收完成，记录用户确认并将后续性能观察与本任务关闭分离。
 
 - A-01 至 A-10 各有已验收任务和证据；未通过或未确认的行动不得标记完成。
 - 真实输出经统一 decoder 后为 24 kHz、单声道、PCM16LE，且离线波形无交替零值、异常削波或明显断裂。

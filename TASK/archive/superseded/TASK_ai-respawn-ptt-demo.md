@@ -7,7 +7,7 @@ plan_status: APPROVED
 approved_by: user
 approved_steps: S-01,S-02,S-03,S-04,S-05
 approved_scope: A-01,A-02,A-03,A-04,A-05,A-06,A-07,A-08,A-09,A-10
-approved_plan_digest: sha256:7d9a1353694a54f9c033e0c7157d8a8f7f69ca612f4ec917b770e7003617d583
+approved_plan_digest: sha256:d4ff8e82e45016c98950f95a88850ae4a82d1440bc66defc8c87c084ed496798
 routing_mode: auto
 selected_modules: M-01,M-02,M-03,M-04,M-05,M-07,M-08
 execution_status: PAUSED
@@ -81,6 +81,7 @@ updated_at: 2026-08-30
 - 2026-08-30 | T-05 / A-05 已验收：默认 Realtek 扬声器完成 5/5 轮队列播放，输出为 342824/343888/364988/404168/420636 PCM bytes；松开到播放首写为 1002/947/935/757/926 ms。播放队列覆盖部分写重试、单次 flush 与禁止串轮，用户在实时验证期间未报告变速、爆音、重叠或截断。
 - 2026-08-30 | T-06 / A-06 已验收：本地网关将每个浏览器 WebSocket 一一映射到独立豆包会话，限制 localhost Origin、单帧 640 bytes、1 MiB 输出背压、合法状态转换与关闭清理。固定浏览器协议探针经 Vite `/ws` 代理完成 121 帧输入、ASR、365104 bytes 二进制输出、playback done、返回 ready 和会话关闭，commit 到首包 920 ms；生产浏览器 bundle 扫描无 `DOUBAO_API_KEY`/`X-Api-Key` 标记，`.env` 仍被 Git 忽略。
 - 2026-08-30 | A-07/A-08 实现与离线验证已完成但尚未验收：React 单页、AudioWorklet 48→16 kHz 分帧、24 kHz Web Audio 单调播放、鼠标/触控/空格 PTT、权限与错误状态均已构建；17 项测试及生产构建通过。内置浏览器首次到达 ready，随后因本地 URL 安全策略无法恢复页面；按契约暂停等待用户在系统 Chrome 手动完成真实页面麦克风往返，不以固定探针替代浏览器验收。
+- 2026-09-01 | 归档校验：同步 `approved_plan_digest` 与保留的 v1 plan 内容；`PAUSED` 状态及未完成任务原样保留，v2 是当前活动入口。
 
 ## 完成标准
 

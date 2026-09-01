@@ -73,6 +73,15 @@ updated_at: 2026-08-30
 
 ## 完成标准
 
+- A-01 | evidence: `packages/audio/src/turn-detector.ts` and its boundary tests cover initial silence, minimum speech, silence timeout, speech recovery, and the 30 s cap.
+- A-02 | evidence: browser AudioWorklet integration preserves the 640-byte PCM16 frame contract and emits one commit event per turn.
+- A-03 | evidence: browser ready-state flow automatically starts listening and produces one start/commit pair without a visible PTT control.
+- A-04 | evidence: half-duplex playback pauses turn detection and reinitializes exactly one listener after `playback.done`.
+- A-05 | evidence: React/CSS UI removes the PTT button and space-key path while exposing listening, thinking, speaking, and error states.
+- A-06 | evidence: `README.md` and `docs/architecture.md` document the 1200 ms silence threshold, 200 ms minimum speech, 30 s cap, and half-duplex limits.
+- A-07 | evidence: `npm test` passed 35 tests including initial silence, short noise, recovery, timeout boundary, cap, reset, and duplicate-submit regressions.
+- A-08 | evidence: `npm run check`, `npm test`, and `npm run build` passed; a permitted local Chrome run completed an automatic turn and returned to listening.
+
 - A-01 至 A-08 均有已验收任务和可检查证据。
 - `npm run check`、`npm test`、`npm run build` 全部通过。
 - 目标 Chrome 至少一轮完成“有效讲话 → 静音 1200 ms → 模型回复 → 播放完成 → 自动重新监听”。
