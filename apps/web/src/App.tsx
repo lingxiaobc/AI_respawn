@@ -12,6 +12,7 @@ import {
 } from "../../../packages/audio/src/turn-detector.ts";
 import type { GatewayMessage, GatewayState } from "../../../packages/protocol/src/browser.ts";
 import { Live2DStage, type Live2DHandle } from "./live2d/Live2DStage.tsx";
+import { NormalizationAdmin } from "./NormalizationAdmin.tsx";
 
 type UiState = GatewayState | "initializing";
 
@@ -44,7 +45,7 @@ const detectorConfig = DEFAULT_TURN_DETECTOR_CONFIG;
 const PRE_ROLL_FRAME_COUNT = 25;
 const live2dDebugEnabled = import.meta.env.DEV && new URLSearchParams(location.search).has("live2dDebug");
 
-export function App() {
+function VoiceApp() {
   const [state, setState] = useState<UiState>("connecting");
   const [turnPhase, setTurnPhase] = useState<TurnDetectorState>("waiting");
   const [round, setRound] = useState(0);
@@ -389,4 +390,8 @@ export function App() {
       <footer>检测到说话后，连续静音 1.2 秒自动回复 · 播放期间会暂时锁定录音</footer>
     </main>
   );
+}
+
+export function App() {
+  return location.pathname === "/normalize" ? <NormalizationAdmin /> : <VoiceApp />;
 }

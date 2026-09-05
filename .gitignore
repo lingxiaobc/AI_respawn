@@ -14,6 +14,15 @@ artifacts/
 logs/
 diagnostics-export*.jsonl
 *.log
+AI_output/normalized/
+AI_output/motion/
+AI_output/linux-validation/
+AI_output/role-replay-test/
+AI_output/role-ui-test/
+AI_output/role-ui-qa/
+.venv-motion/
+.motion-models/
+__pycache__/
 
 # OS/editor noise
 .DS_Store

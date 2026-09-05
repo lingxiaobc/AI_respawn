@@ -1,6 +1,8 @@
 import { createServer, type IncomingMessage } from "node:http";
 import { resolve } from "node:path";
 import { WebSocketServer, WebSocket } from "ws";
+import { NormalizationQueue } from "../../../packages/image-normalization/src/queue.ts";
+import { ZenMuxImageProvider } from "../../../packages/image-normalization/src/zenmux.ts";
 import { DiagnosticLogger } from "../../../packages/diagnostics/src/logger.ts";
 import { createSessionIdentity as createIdentity } from "../../../packages/diagnostics/src/schema.ts";
 import { DoubaoRealtimeClient, type ProviderDiagnostic } from "../../../packages/provider-doubao/src/client.ts";
@@ -12,6 +14,8 @@ import {
   type GatewayState,
 } from "../../../packages/protocol/src/browser.ts";
 import { loadLocalEnv } from "../../../scripts/env.ts";
+import { handleNormalizationHttp } from "./normalization-http.ts";
+import { PaidImages } from "../../../packages/role-resource/src/paid-images.ts";
 
 const PORT = Number.parseInt(process.env.PORT ?? "8787", 10);
 const MAX_BUFFERED_BYTES = 1_048_576;
@@ -23,7 +27,17 @@ const SPEAKING_TIMEOUT_MS = 120_000;
 await loadLocalEnv();
 const apiKey = process.env.DOUBAO_API_KEY?.trim();
 if (!apiKey) throw new Error("DOUBAO_API_KEY is required in the untracked .env file");
+const zenMuxApiKey = process.env.ZENMUX_API_KEY?.trim();
+if (!zenMuxApiKey) throw new Error("ZENMUX_API_KEY is required in the untracked .env file");
 const diagnostics = new DiagnosticLogger({ directory: process.env.DIAGNOSTICS_DIR ?? resolve("logs"), retentionDays: 7 });
+const normalizationQueue = new NormalizationQueue({
+  root: process.env.NORMALIZATION_OUTPUT_DIR ?? resolve("AI_output", "normalized"),
+  provider: new PaidImages(resolve("AI_output/motion"), new ZenMuxImageProvider({
+    apiKey: zenMuxApiKey,
+    baseUrl: process.env.ZENMUX_BASE_URL,
+  }), process.env.ROLE_ALLOW_PAID === "1"),
+});
+await normalizationQueue.initialize();
 
 function isAllowedOrigin(request: IncomingMessage): boolean {
   const origin = request.headers.origin;
@@ -498,7 +512,11 @@ const server = createServer((request, response) => {
     response.end(JSON.stringify({ status: "ok" }));
     return;
   }
-  response.writeHead(404).end();
+  void handleNormalizationHttp(request, response, normalizationQueue, isAllowedOrigin).then((handled) => {
+    if (!handled && !response.headersSent) response.writeHead(404).end();
+  }).catch(() => {
+    if (!response.headersSent) response.writeHead(500).end();
+  });
 });
 const wss = new WebSocketServer({ noServer: true, maxPayload: INPUT_FRAME_BYTES });
 

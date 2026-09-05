@@ -72,7 +72,10 @@ export default defineConfig({
     port: 5173,
     strictPort: true,
     fs: { allow: [projectRoot, live2dSdkRoot] },
-    proxy: { "/ws": { target: "ws://127.0.0.1:8787", ws: true } },
+    proxy: {
+      "/ws": { target: "ws://127.0.0.1:8787", ws: true },
+      "/api": { target: "http://127.0.0.1:8787" },
+    },
   },
   build: { outDir: "dist", emptyOutDir: true },
 });

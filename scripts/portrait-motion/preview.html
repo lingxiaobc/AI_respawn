@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>嘴眼动画效果检查</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#181a1d;color:#eee;font:16px system-ui,sans-serif}main{max-width:1100px;margin:auto;padding:20px;display:grid;grid-template-columns:minmax(260px,520px) minmax(260px,1fr);gap:24px}canvas{width:100%;height:auto;display:block;border-radius:12px;background:#222}aside{padding:12px 0}label{display:block;margin:22px 0}input[type=range]{display:block;width:100%;margin-top:12px}button{padding:10px 14px;margin:4px;border:1px solid #777;background:#292e34;color:white;border-radius:8px;cursor:pointer}p{line-height:1.65;color:#b8c2cd}output{float:right}#status{white-space:pre-wrap;font-size:14px}@media(max-width:650px){main{display:block;padding:12px}canvas{max-height:65vh;width:auto;max-width:100%;margin:auto}}
+</style>
+<main><canvas id="portrait" width="1024" height="1536"></canvas><aside>
+<h1>嘴眼动画效果检查</h1><p>拖动滑块检查三个独立参数。播放时嘴巴缓慢往返，眼睛间歇眨动。请观察唇缘、牙齿、眼角是否出现双影、接缝或跳变。</p>
+<label>嘴部开合 <output id="mouthValue">0.00</output><input id="mouth" type="range" min="0" max="1" step="0.01" value="0"></label>
+<label>画面左眼闭合 <output id="eyeLeftValue">0.00</output><input id="eyeLeft" type="range" min="0" max="1" step="0.01" value="0"></label>
+<label>画面右眼闭合 <output id="eyeRightValue">0.00</output><input id="eyeRight" type="range" min="0" max="1" step="0.01" value="0"></label>
+<button id="play">自动开合与眨眼</button><button id="stop">停止并闭嘴睁眼</button>
+<label>用本地音频测试嘴部<input id="audioFile" type="file" accept="audio/*"></label><audio id="audio" controls style="width:100%"></audio>
+<p>音频仅在浏览器本地播放，按音量驱动嘴部。静音时闭嘴。</p><p id="status">载入中…</p></aside></main>
+<script>
+const data=/*RESOURCE_DATA*/null;
+const keys=['mouth','eyeLeft','eyeRight'], canvas=document.querySelector('canvas'),ctx=canvas.getContext('2d',{willReadFrequently:true});
+let auto=false,start=0,analyser,audioContext,samples,audioUrl;
+const audio=document.querySelector('audio'), sliders=Object.fromEntries(keys.map(k=>[k,document.getElementById(k)]));
+function image(src){return new Promise((resolve,reject)=>{const im=new Image();im.onload=()=>resolve(im);im.onerror=reject;im.src=src})}
+function set(k,v){sliders[k].value=Math.max(0,Math.min(1,v));document.getElementById(k+'Value').value=Number(sliders[k].value).toFixed(2)}
+let base,atlases;
+function draw(){ctx.drawImage(base,0,0);for(const k of keys){const t=data.manifest.tracks[k],i=Math.round(Number(sliders[k].value)*(t.frameCount-1));ctx.drawImage(atlases[k],i%t.columns*t.frameWidth,Math.floor(i/t.columns)*t.frameHeight,t.frameWidth,t.frameHeight,t.box[0],t.box[1],t.frameWidth,t.frameHeight)}}
+function frame(now){if(auto){const t=(now-start)/1000;set('mouth',(1-Math.cos(t*Math.PI/2))/2);const phase=t%3.7;const blink=phase<.32?Math.sin(phase/.32*Math.PI):0;set('eyeLeft',blink);set('eyeRight',blink)}if(analyser&&!audio.paused){analyser.getFloatTimeDomainData(samples);let sum=0;for(const x of samples)sum+=x*x;const rms=Math.sqrt(sum/samples.length);set('mouth',Math.max(0,(rms-.008)*9));const p=now/1000%4;set('eyeLeft',p<.3?Math.sin(p/.3*Math.PI):0);set('eyeRight',Number(sliders.eyeLeft.value))}if(base)draw();requestAnimationFrame(frame)}
+for(const k of keys)sliders[k].oninput=()=>{auto=false;audio.pause();set(k,Number(sliders[k].value))};
+document.getElementById('play').onclick=()=>{audio.pause();auto=true;start=performance.now()};
+document.getElementById('stop').onclick=()=>{auto=false;audio.pause();keys.forEach(k=>set(k,0));draw()};
+audio.onpause=()=>{if(!auto)set('mouth',0)};audio.onended=()=>set('mouth',0);
+document.getElementById('audioFile').onchange=async e=>{const file=e.target.files[0];if(!file)return;auto=false;if(audioUrl)URL.revokeObjectURL(audioUrl);audioUrl=URL.createObjectURL(file);audio.src=audioUrl;if(!audioContext){audioContext=new AudioContext();analyser=audioContext.createAnalyser();analyser.fftSize=1024;samples=new Float32Array(analyser.fftSize);const source=audioContext.createMediaElementSource(audio);source.connect(analyser);analyser.connect(audioContext.destination)}await audioContext.resume();await audio.play()};
+Promise.all([image(data.base),Promise.all(keys.map(k=>image(data.atlases[k])))]).then(([b,a])=>{base=b;atlases=Object.fromEntries(keys.map((k,i)=>[k,a[i]]));document.getElementById('status').textContent='资源已载入 · 每个部位 '+data.manifest.tracks.mouth.frameCount+' 帧\n遮罩外差异像素：'+data.qa.outsideMaskChangedPixels+'\n自然度仍需人工确认';requestAnimationFrame(frame)}).catch(()=>document.getElementById('status').textContent='资源载入失败');
+</script></html>

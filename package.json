@@ -9,7 +9,7 @@
     "server": "node --experimental-strip-types apps/server/src/server.ts",
     "build": "npm run check && npm run build:web",
     "gateway:probe": "node --experimental-strip-types scripts/gateway-probe.ts",
-    "test": "node --experimental-strip-types --test packages/**/*.test.ts",
+    "test": "node --experimental-strip-types --test packages/**/*.test.ts apps/**/*.test.ts",
     "probe": "node --experimental-strip-types scripts/probe.ts",
     "devices": "node --experimental-strip-types scripts/devices.ts",
     "capture:check": "node --experimental-strip-types scripts/capture-check.ts",
@@ -19,12 +19,16 @@
     "build:web": "vite build --config apps/web/vite.config.ts",
     "fixture:build": "node --experimental-strip-types scripts/build-public-fixture.ts",
     "fixture:inspect": "node --experimental-strip-types scripts/inspect-fixture.ts",
-    "output:inspect": "node --experimental-strip-types scripts/inspect-output.ts"
+    "output:inspect": "node --experimental-strip-types scripts/inspect-output.ts",
+    "normalize:batch": "node --experimental-strip-types scripts/normalize-images.ts",
+    "roles": "node --experimental-strip-types scripts/role-resources.ts",
+    "roles:ui-test": "node scripts/verify-role-admin.mjs"
   },
   "engines": {
     "node": ">=24"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^1.0.8",
     "@picovoice/pvrecorder-node": "^1.2.9",
     "@picovoice/pvspeaker-node": "^1.0.3",
     "react": "^19.2.8",

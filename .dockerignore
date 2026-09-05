@@ -1,0 +1,8 @@
+**
+!package.json
+!package-lock.json
+!scripts/
+!scripts/portrait-motion/
+!scripts/portrait-motion/requirements.txt
+!scripts/role-linux/
+!scripts/role-linux/Dockerfile

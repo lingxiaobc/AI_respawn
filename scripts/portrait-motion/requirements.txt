@@ -1,0 +1,9 @@
+# Install mediapipe==0.10.33 separately with --no-deps: it declares GUI OpenCV.
+absl-py==2.5.0
+flatbuffers==25.12.19
+sounddevice==0.5.6
+matplotlib==3.10.8
+opencv-python-headless==4.13.0.92
+numpy==2.2.6
+Pillow==12.1.1
+psutil==7.2.2
