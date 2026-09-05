@@ -45,11 +45,12 @@ class PrepareTests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError, "1024x1536"):
                 load_rgb(path)
 
-    def test_immutable_base_and_corrupt_cache_rejected(self):
+    @patch('prepare.detect',return_value=fixture_points())
+    def test_immutable_base_and_corrupt_cache_rejected(self, detector):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
             source, model, output = root/"source.png", root/"model.task", root/"out"
-            Image.new("RGB", (1024, 1536), (100, 90, 80)).save(source)
+            Image.fromarray(np.random.default_rng(7).integers(0,256,(1536,1024,3),dtype=np.uint8)).save(source)
             model.write_bytes(b"unit-test-model")
             original = source.read_bytes()
             with patch("prepare.detect", return_value=fixture_points()):
@@ -57,6 +58,28 @@ class PrepareTests(unittest.TestCase):
             self.assertEqual(original, (output/"static_locked_base.png").read_bytes())
             self.assertEqual(first["sourceHash"], hashlib.sha256(original).hexdigest())
             self.assertEqual(prepare(source, output, model)["sourceHash"], first["sourceHash"])
+            with patch('prepare.detect', side_effect=ValueError('FACE_COUNT_INVALID: detected=0')):
+                with self.assertRaisesRegex(ValueError, 'CANONICAL_INVALID: FACE_COUNT_INVALID'):
+                    prepare(source, output, model)
+            tilted = fixture_points()
+            tilted[263, 1] += 60
+            tilted[362, 1] -= 60
+            with patch('prepare.detect', return_value=tilted):
+                for destination in [output, root/'fresh-tilted']:
+                    with self.assertRaisesRegex(ValueError, 'tilt exceeds'):
+                        prepare(source, destination, model)
+            # Simulate internally consistent but overlapping cached masks.
+            mask = np.array(Image.open(output/'mask-mouth.png'))
+            box = first['regions']['mouth']['box']
+            for key in FEATURES:
+                Image.fromarray(mask).save(output/f'mask-{key}.png')
+                first['regions'][key]['box'] = box
+            Image.fromarray(mask).save(output/'mask-union.png')
+            (output/'landmarks.json').write_text(json.dumps(first), encoding='utf-8')
+            with patch('prepare.make_mask', return_value=(mask, box)):
+                for destination in [output, root/'fresh-overlap']:
+                    with self.assertRaisesRegex(ValueError, 'Movement masks overlap'):
+                        prepare(source, destination, model)
             Image.new("L", (1024, 1536)).save(output/"mask-mouth.png")
             with self.assertRaisesRegex(ValueError, "mask/ROI mismatch"):
                 prepare(source, output, model)

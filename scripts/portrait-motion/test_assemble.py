@@ -1,9 +1,51 @@
 import unittest
+from unittest.mock import patch
 import numpy as np
-from assemble import boundary_points, triangles, mesh_warp, morph_frames, composite, FRAME_COUNT
+import cv2
+from assemble import boundary_points, triangles, mesh_warp, morph_frames, composite, FRAME_COUNT, texture_alignment, align_donor, FEATURES, MOUTH_OUTER
 
 
 class AssembleTests(unittest.TestCase):
+    def test_topology_search_covers_between_quarter_candidates_and_rejects_no_solution(self):
+        images=[np.zeros((20,20,3),np.uint8) for _ in range(3)]
+        triangle=np.array([[2,2],[12,2],[7,12]],np.float32)
+        points=[triangle+[i,0] for i in range(3)]
+        def narrow_window(p,w,h):
+            phase=float(p[0,0])%1
+            return [[0,1,2]] if .04<phase<.16 else []
+        with patch('assemble.triangles',side_effect=narrow_window):
+            self.assertEqual(len(list(morph_frames(images,points))),FRAME_COUNT)
+        with patch('assemble.triangles',return_value=[]):
+            with self.assertRaisesRegex(ValueError,'No non-flipping'):list(morph_frames(images,points))
+
+    def test_mouth_displacement_uses_independent_texture_without_relaxing_gate(self):
+        points=np.zeros((478,2),np.float32);points[61]=[10,10];points[291]=[110,10]
+        base=np.zeros((128,128,3),np.uint8)
+        bad=np.array([[1,0,0],[0,1,20]],np.float32)
+        good=np.array([[1,0,0],[0,1,0]],np.float32)
+        with patch('assemble.cv2.estimateAffinePartial2D',return_value=(bad,np.ones((17,1),np.uint8))),patch('assemble.texture_alignment',return_value=(good,{'method':'stable-face-texture','textureCorrelation':.99})) as texture:
+            _,result,report=align_donor(base,base,points,points)
+            texture.assert_called_once();np.testing.assert_array_equal(result,points)
+            self.assertEqual(report['fallbackReason'],'landmark-mouth-displacement')
+        with patch('assemble.cv2.estimateAffinePartial2D',return_value=(bad,np.ones((17,1),np.uint8))),patch('assemble.texture_alignment',side_effect=ValueError('correlation rejected')):
+            with self.assertRaisesRegex(ValueError,'correlation rejected'):align_donor(base,base,points,points)
+
+    def test_texture_registration_recovers_small_shift_and_rejects_unrelated_image(self):
+        rng=np.random.default_rng(71)
+        gray=cv2.GaussianBlur(rng.integers(0,256,(1536,1024),dtype=np.uint8),(9,9),0)
+        base=np.repeat(gray[:,:,None],3,axis=2)
+        theta=np.linspace(0,2*np.pi,478)
+        points=np.column_stack([512+220*np.cos(theta),720+300*np.sin(theta)]).astype(np.float32)
+        for ids,center in [(MOUTH_OUTER,(512,850)),(FEATURES['eyeLeft'],(420,660)),(FEATURES['eyeRight'],(604,660))]:
+            angles=np.linspace(0,2*np.pi,len(ids),endpoint=False)
+            points[ids]=np.array(center)+np.column_stack([35*np.cos(angles),10*np.sin(angles)])
+        donor=cv2.warpAffine(base,np.array([[1,0,3],[0,1,-2]],np.float32),(1024,1536))
+        matrix,report=texture_alignment(base,donor,points)
+        self.assertGreater(report['textureCorrelation'],.97)
+        np.testing.assert_allclose(matrix[:,2],[-3,2],atol=.5)
+        with self.assertRaises(ValueError):
+            texture_alignment(base,np.zeros_like(base),points)
+
     def test_invalid_morph_triangles_fail_closed(self):
         image = np.zeros((20,20,3),np.uint8)
         good = np.array([[2,2],[16,2],[8,16]],np.float32)

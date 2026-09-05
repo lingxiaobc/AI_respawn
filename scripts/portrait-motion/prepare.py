@@ -44,7 +44,7 @@ def detect(rgb, model):
     with mp.tasks.vision.FaceLandmarker.create_from_options(options) as detector:
         result = detector.detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb))
     if len(result.face_landmarks) != 1:
-        raise ValueError("Exactly one detectable face is required")
+        raise ValueError(f"FACE_COUNT_INVALID: detected={len(result.face_landmarks)}, expected=1; detectionConfidenceMin=0.6, presenceConfidenceMin=0.6")
     return np.array([[p.x * rgb.shape[1], p.y * rgb.shape[0]]
                      for p in result.face_landmarks[0]], dtype=np.float32)
 
@@ -74,11 +74,18 @@ def make_mask(points, key, shape):
     return mask, box
 
 
-def prepare(source, output, model):
+def _prepare(source, output, model):
     start = time.monotonic()
     source, output = Path(source), Path(output)
     digest = hashlib.sha256(source.read_bytes()).hexdigest()
     contract_path = output / "landmarks.json"
+    rgb = load_rgb(source)
+    points = detect(rgb, model)
+    from preflight import validate_canonical_quality
+    quality = validate_canonical_quality(rgb, points)
+    eye_line = points[263] - points[33]
+    if abs(float(eye_line[0])) < 1e-6 or abs(float(eye_line[1] / eye_line[0])) > 0.25:
+        raise ValueError("Face tilt exceeds normalization contract")
     if contract_path.exists():
         old = json.loads(contract_path.read_text(encoding="utf-8"))
         if old["sourceHash"] != digest or old["version"] != VERSION:
@@ -96,17 +103,12 @@ def prepare(source, output, model):
             actual = np.array(Image.open(output / f"mask-{key}.png").convert("L"))
             if not np.array_equal(expected, actual) or old["regions"][key]["box"] != box:
                 raise ValueError(f"Cached {key} mask/ROI mismatch")
+            if np.any((union > 0) & (expected > 0)):
+                raise ValueError("Movement masks overlap")
             union = np.maximum(union, actual)
         if not np.array_equal(union, np.array(Image.open(output / "mask-union.png").convert("L"))):
             raise ValueError("Cached union mask mismatch")
-        return old
-    rgb = load_rgb(source)
-    points = detect(rgb, model)
-    from preflight import validate_geometry
-    validate_geometry(points, rgb.shape)
-    eye_line = points[263] - points[33]
-    if abs(float(eye_line[1] / eye_line[0])) > 0.25:
-        raise ValueError("Face tilt exceeds normalization contract")
+        return {**old,'canonicalQuality':quality}
     output.mkdir(parents=True, exist_ok=True)
     base_path = output / "static_locked_base.png"
     if base_path.exists() and hashlib.sha256(base_path.read_bytes()).hexdigest() != digest:
@@ -132,9 +134,16 @@ def prepare(source, output, model):
               "width": 1024, "height": 1536, "opaque": True,
               "base": "static_locked_base.png", "regions": regions,
               "landmarks": points.tolist(), "elapsedSeconds": time.monotonic()-start,
-              "modelHash": hashlib.sha256(Path(model).read_bytes()).hexdigest()}
+              "modelHash": hashlib.sha256(Path(model).read_bytes()).hexdigest(),"canonicalQuality":quality}
     contract_path.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
     return result
+
+
+def prepare(source, output, model):
+    try:
+        return _prepare(source, output, model)
+    except (ValueError, OSError) as error:
+        raise ValueError(f'CANONICAL_INVALID: {error}') from error
 
 
 if __name__ == "__main__":

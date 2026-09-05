@@ -1,8 +1,10 @@
 import { createRequire } from 'node:module';
 import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
+import { loadLocalEnv } from '../env.ts';
+await loadLocalEnv();
 const require=createRequire(import.meta.url);
-const {chromium}=require(process.env.PLAYWRIGHT_MODULE ?? 'playwright');
+const {chromium}=require(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const [url,out]=process.argv.slice(2);
 if(!url||!out)throw new Error('Usage: verify-preview.mjs <local preview URL> <output directory>');
 const browser=await chromium.launch({headless:true,...(process.env.PLAYWRIGHT_CHANNEL ? {channel:process.env.PLAYWRIGHT_CHANNEL} : {})});

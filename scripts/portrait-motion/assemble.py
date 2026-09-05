@@ -26,11 +26,49 @@ def transform_points(points, matrix):
     return points @ matrix[:, :2].T + matrix[:, 2]
 
 
+def texture_alignment(base, donor, base_points):
+    """Closed-eye landmarks may drift; independently register unchanged face texture."""
+    mask=np.zeros(base.shape[:2],np.uint8)
+    hull=cv2.convexHull(base_points.astype(np.int32))
+    cv2.fillConvexPoly(mask,hull,255)
+    for ids in [MOUTH_OUTER,FEATURES['eyeLeft'],FEATURES['eyeRight']]:
+        lo=np.floor(base_points[ids].min(axis=0)-20).astype(int)
+        hi=np.ceil(base_points[ids].max(axis=0)+20).astype(int)
+        mask[max(0,lo[1]):hi[1]+1,max(0,lo[0]):hi[0]+1]=0
+    gray=lambda image:cv2.resize(cv2.GaussianBlur(cv2.cvtColor(image,cv2.COLOR_RGB2GRAY),(9,9),0),(512,768))
+    try:
+        score,forward=cv2.findTransformECC(gray(base),gray(donor),np.eye(2,3,dtype=np.float32),
+            cv2.MOTION_EUCLIDEAN,(cv2.TERM_CRITERIA_EPS|cv2.TERM_CRITERIA_COUNT,100,1e-5),
+            cv2.resize(mask,(512,768)),5)
+    except cv2.error as error:
+        raise ValueError('Stable face texture registration failed') from error
+    forward[:,2]*=2
+    matrix=cv2.invertAffineTransform(forward)
+    angle=abs(float(np.arctan2(matrix[1,0],matrix[0,0])))
+    if not np.all(np.isfinite(matrix)) or not np.isfinite(score) or score<.97:
+        raise ValueError('Stable face texture correlation below 0.97')
+    if np.linalg.norm(matrix[:,2])>10 or angle>.05:
+        raise ValueError('Texture fallback exceeds small-motion registration bounds')
+    return matrix,{'method':'stable-face-texture','textureCorrelation':float(score)}
+
+
 def align_donor(base, donor, base_points, donor_points):
     matrix, inliers = cv2.estimateAffinePartial2D(donor_points[STABLE], base_points[STABLE],
         method=cv2.RANSAC, ransacReprojThreshold=3.0)
+    report={'method':'face-landmarks'}
     if matrix is None or inliers.sum() < 8:
-        raise ValueError("Donor cannot be aligned using stable facial features")
+        matrix,report=texture_alignment(base,donor,base_points)
+    else:
+        # Landmark consensus can include expression-dependent cheek/chin drift.
+        # If it breaks the existing mouth displacement gate, independently
+        # register unchanged face texture; never enlarge the local gate.
+        candidate=transform_points(donor_points,matrix)
+        mouth_width=float(np.linalg.norm(base_points[291]-base_points[61]))
+        shift=float(np.linalg.norm(np.mean(base_points[[61,291]]-candidate[[61,291]],axis=0)))
+        if shift>mouth_width*.12:
+            matrix,report=texture_alignment(base,donor,base_points)
+            report['fallbackReason']='landmark-mouth-displacement'
+            report['initialMouthShiftPx']=shift
     scale = float(np.linalg.norm(matrix[0, :2]))
     if not .85 < scale < 1.15:
         raise ValueError("Donor changed face scale too much")
@@ -38,9 +76,9 @@ def align_donor(base, donor, base_points, donor_points):
                              borderMode=cv2.BORDER_REFLECT_101)
     points = transform_points(donor_points, matrix).astype(np.float32)
     residual = float(np.median(np.linalg.norm(points[STABLE] - base_points[STABLE], axis=1)))
-    if residual > 4:
+    if residual > 4 and report['method']=='face-landmarks':
         raise ValueError("Donor stable-feature residual exceeds 4px")
-    return aligned, points, {"matrix": matrix.tolist(), "stableMedianErrorPx": residual}
+    return aligned, points, {**report,"matrix": matrix.tolist(), "stableMedianErrorPx": residual}
 
 
 def boundary_points(width, height):
@@ -70,7 +108,7 @@ def mesh_warp(image, source, target, topology):
         area_a = float(np.linalg.det(np.stack([a[1]-a[0], a[2]-a[0]])))
         area_b = float(np.linalg.det(np.stack([b[1]-b[0], b[2]-b[0]])))
         if min(abs(area_a), abs(area_b)) < .05 or area_a * area_b <= 0:
-            raise ValueError("Degenerate or flipped morph triangle; resource cannot be published")
+            raise ValueError(f"Degenerate or flipped morph triangle {ids}, areas={area_a:.4f}/{area_b:.4f}; resource cannot be published")
         transform = cv2.getAffineTransform(a, b)
         if not np.all(np.isfinite(transform)):
             raise ValueError("Non-finite morph transform")
@@ -206,7 +244,36 @@ def local_donor(base, aligned, donor_points, base_points, key, box, mask, mouth_
 
 def morph_frames(images, points):
     h,w = images[0].shape[:2]
-    topology = [triangles((points[i]+points[i+1])/2,w,h) for i in range(2)]
+    alternatives=[points]
+    if len(points[0])==len(MOUTH_OUTER)+len(MOUTH_INNER)+8:
+        # Near-touching inner lips contain many almost-coincident landmarks.
+        # Keep the outer contour plus inner corners/centres as shared controls.
+        keep=list(range(len(MOUTH_OUTER)))+[len(MOUTH_OUTER)+MOUTH_INNER.index(i) for i in [78,13,308,14]]+list(range(len(points[0])-8,len(points[0])))
+        alternatives.append([p[keep] for p in points])
+    def compatible_topology(a,b):
+        # Preserve the fast candidates, then search the actual frame grid.
+        # Sparse near-closed lips can have safe topology only between quarters.
+        for blend in dict.fromkeys([.5,0,1,.25,.75,*np.linspace(0,1,FRAME_COUNT)]):
+            candidate=triangles(a*(1-blend)+b*blend,w,h)
+            if not candidate:continue
+            ids=np.array(candidate)
+            signs=[]
+            for t in np.linspace(0,1,21):
+                p=(a*(1-t)+b*t)[ids]
+                areas=np.linalg.det(np.stack([p[:,1]-p[:,0],p[:,2]-p[:,0]],axis=1))
+                signs.append(areas)
+            areas=np.array(signs)
+            if np.all(np.abs(areas)>=.05) and np.all(areas*areas[0]>0):return candidate
+        raise ValueError('No non-flipping triangulation for adjacent animation states')
+    for candidate_points in alternatives:
+        try:
+            topology = [compatible_topology(candidate_points[i],candidate_points[i+1]) for i in range(2)]
+            points=candidate_points
+            break
+        except ValueError:
+            continue
+    else:
+        raise ValueError('No non-flipping triangulation for adjacent animation states')
     for index in range(FRAME_COUNT):
         value = index/(FRAME_COUNT-1)*2
         segment = min(1,int(value)); t = value-segment
@@ -270,7 +337,20 @@ def assemble(directory, model):
         images,points = [first],[p0]
         for state in state_names:
             target = (.10 if state=='mouth-half' else .22) if key=='mouth' else None
-            crop,p,offset = local_donor(base,*donors[state],base_points,key,box,mask,mouth_target=target)
+            selected=donors[state]
+            try:
+                crop,p,offset = local_donor(base,*selected,base_points,key,box,mask,mouth_target=target)
+            except ValueError as error:
+                if str(error)!=f'{key}: donor local displacement too large':raise
+                # Each track is isolated. A globally safe registration can be
+                # better for one eyelid and worse for the other; do not replace
+                # the already accepted track or weaken its local constraints.
+                raw=load_rgb(directory/'donors'/f'{state}.png')
+                matrix,texture_report=texture_alignment(base,raw,base_points)
+                selected=(cv2.warpAffine(raw,matrix,(base.shape[1],base.shape[0]),flags=cv2.INTER_CUBIC,borderMode=cv2.BORDER_REFLECT_101),
+                          transform_points(detect(raw,model),matrix).astype(np.float32))
+                crop,p,offset = local_donor(base,*selected,base_points,key,box,mask,mouth_target=target)
+                alignment[state][key+'Registration']={**texture_report,'matrix':matrix.tolist(),'reason':'local-displacement-fallback'}
             if target is not None:
                 # Measure the actual masked composite, not only transformed control points.
                 internal_target=target
@@ -284,11 +364,14 @@ def assemble(directory, model):
                     if attempt==2 or measured<.025:raise ValueError(f'{state}: calibrated mouth amplitude failed ({measured:.3f})')
                     internal_target+=float(np.clip(internal_target*(target/measured-1),-.01,.01))
                     if not .05<=internal_target<=.35:raise ValueError('Unsafe amplitude correction requested')
-                    crop,p,offset=local_donor(base,*donors[state],base_points,key,box,mask,mouth_target=internal_target)
+                    crop,p,offset=local_donor(base,*selected,base_points,key,box,mask,mouth_target=internal_target)
                 alignment[state]['calibration']={'requestedRatio':target,'internalTargetRatio':internal_target,'measuredCompositeRatio':measured}
             images.append(crop); points.append(p)
             alignment[state][key+"ColorOffset"] = offset
-        frames = [np.dstack([frame,mask]) for frame in morph_frames(images,points)]
+        try:
+            frames = [np.dstack([frame,mask]) for frame in morph_frames(images,points)]
+        except ValueError as error:
+            raise ValueError(f'{key}: {error}') from error
         tracks[key] = {"box":box,"frames":frames}
         w,h = x1-x0,y1-y0
         atlas = Image.new("RGBA",(w*7,h*3))
