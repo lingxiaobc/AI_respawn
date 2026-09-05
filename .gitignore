@@ -20,6 +20,14 @@ AI_output/linux-validation/
 AI_output/role-replay-test/
 AI_output/role-ui-test/
 AI_output/role-ui-qa/
+AI_output/roles/
+AI_output/batch-review/
+AI_output/canonical-gate/
+AI_output/canonical-gate-source.json
+AI_output/gemini-probe/
+AI_output/gemini-stability-review/
+AI_output/stability-linux/
+AI_output/stability-v1/
 .venv-motion/
 .motion-models/
 __pycache__/

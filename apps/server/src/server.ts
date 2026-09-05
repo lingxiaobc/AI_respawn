@@ -17,6 +17,7 @@ import { loadLocalEnv } from "../../../scripts/env.ts";
 import { handleNormalizationHttp } from "./normalization-http.ts";
 import { PaidImages } from "../../../packages/role-resource/src/paid-images.ts";
 
+await loadLocalEnv();
 const PORT = Number.parseInt(process.env.PORT ?? "8787", 10);
 const MAX_BUFFERED_BYTES = 1_048_576;
 const INPUT_FRAME_BYTES = 640;
@@ -24,7 +25,6 @@ const LISTENING_TIMEOUT_MS = 35_000;
 const THINKING_TIMEOUT_MS = 20_000;
 const SPEAKING_TIMEOUT_MS = 120_000;
 
-await loadLocalEnv();
 const apiKey = process.env.DOUBAO_API_KEY?.trim();
 if (!apiKey) throw new Error("DOUBAO_API_KEY is required in the untracked .env file");
 const zenMuxApiKey = process.env.ZENMUX_API_KEY?.trim();

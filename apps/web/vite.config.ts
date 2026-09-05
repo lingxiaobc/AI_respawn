@@ -3,6 +3,9 @@ import { extname, join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import { loadLocalEnv } from "../../scripts/env.ts";
+
+await loadLocalEnv();
 
 const projectRoot = fileURLToPath(new URL("../..", import.meta.url));
 const live2dSdkRoot = resolve(process.env.LIVE2D_SDK_PATH ?? "P:/live2D/CubismSdkForWeb-5-r.5");
@@ -64,6 +67,8 @@ function live2dAssets(): Plugin {
 }
 
 export default defineConfig({
+  // Root .env was already loaded above; disallow nested/mode-specific .env files.
+  envDir: false,
   root: "apps/web",
   plugins: [react(), live2dAssets()],
   resolve: { alias: { "@live2d-framework": frameworkRoot } },

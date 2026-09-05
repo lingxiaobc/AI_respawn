@@ -21,7 +21,7 @@ npm run dev
 
 随后在 Chrome 打开 <http://127.0.0.1:5173/>。允许麦克风权限后页面会在本地自动监听；检测到有效说话后才开启一轮上游音频，连续静音约 1.2 秒后自动提交。播放期间录音会锁定，避免串轮。
 
-临时管理员图片规范化页面位于 <http://127.0.0.1:5173/normalize>。它使用仅由本地服务端读取的 `ZENMUX_API_KEY`，支持多图上传、顺序任务状态和原图/规范图对比。详细合同与批处理用法见 [`docs/image-normalization.md`](docs/image-normalization.md)。
+临时管理员图片规范化页面位于 <http://127.0.0.1:5173/normalize>，每次上传一张，显示任务状态和原图/规范图对比。包含嘴眼素材、动画制作及审查的完整流程使用独立角色服务；启动、串行批处理和安全默认值见 [`docs/role-resource-pipeline.md`](docs/role-resource-pipeline.md)。`ZENMUX_API_KEY`仅由服务端读取。
 
 ## 验证命令
 
