@@ -6,7 +6,8 @@ import { validateAndConvertInput, sanitizeProviderError } from "../../image-norm
 
 export const DONOR_STATES = ["mouth-half", "mouth-open", "eyes-half", "eyes-closed"] as const;
 export type DonorState = typeof DONOR_STATES[number];
-export const CALL_LIMIT = 18;
+// PT-new-role-stability v1: user approved 14 historical + at most 25 first attempts.
+export const CALL_LIMIT = 40; // One extra attempt explicitly approved for new-role coverage on 2026-09-05.
 // Reconcile the explicitly approved manual success; never issue this retry again.
 const APPROVED_REPLACEMENT = "674a3f21bfb0095fcc53a8429a48aa515b0a589f66895b6fad37239dd5d74302";
 export const PROMPT_VERSION = "local-donor-v2";
@@ -41,7 +42,7 @@ export async function reserveCall(root: string, id: string, details: object): Pr
   const directory = join(root, ".calls");
   await mkdir(directory, { recursive: true });
   if ((await readdir(directory)).filter((name) => name.endsWith(".json")).length >= CALL_LIMIT) {
-    throw new Error("18-call approval budget exhausted; new approval required");
+    throw new Error(`${CALL_LIMIT}-call approval budget exhausted; new approval required`);
   }
   const path = join(directory, `${id}.json`);
   const file = await open(path, "wx");
