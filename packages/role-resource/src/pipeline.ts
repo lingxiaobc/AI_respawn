@@ -7,6 +7,7 @@ import { PaidImages } from "./paid-images.ts";
 import { validateAndConvertInput, sanitizeProviderError } from "../../image-normalization/src/validation.ts";
 import { NORMALIZATION_CONTRACT, NORMALIZATION_PROMPT } from "../../image-normalization/src/contract.ts";
 import { donorPrompt, donorPromptVersion } from "../../portrait-motion/src/donors.ts";
+import {pipelineVersion} from './version.ts';
 
 interface Fixture { inputHash: string; images: Record<string, { path: string; sha256: string }> }
 interface Options { root: string; python: string; paid: PaidImages; fixture?: Fixture }
@@ -74,6 +75,9 @@ export class RolePipeline {
   }
   async run(job: RoleJob) {
     try {
+      const version=await pipelineVersion();
+      if(Object.keys(job.completed).length && job.pipelineVersion!==version)throw new Error('PIPELINE_VERSION_CHANGED: preserve old resources; submit a new job to rebuild from verified image cache');
+      job.pipelineVersion=version;
       if ((job.mode === "fixture") !== Boolean(this.options.fixture)) throw new Error("EXECUTION_MODE_CHANGED");
       if (hash(await readFile(join(this.store.directory(job.id), "source.upload"))) !== job.sourceHash || !await this.verify(job)) throw new Error("CHECKPOINT_HASH_MISMATCH");
       for (const stage of STAGES) {
@@ -135,10 +139,10 @@ export class RolePipeline {
       const env: NodeJS.ProcessEnv = { ...process.env, PYTHONUTF8: "1" };
       for (const key of Object.keys(env)) if (/(KEY|TOKEN|SECRET|PASSWORD)/i.test(key)) delete env[key];
       const child = spawn(program,args,{windowsHide:true,env,stdio:["ignore","ignore","pipe"]});
-      let error = ""; child.stderr.on("data",chunk=>{error=(error+chunk.toString()).slice(-1200);});
+      let error = ""; child.stderr.on("data",chunk=>{error=(error+chunk.toString()).slice(-16000);});
       const timer=setTimeout(()=>{child.kill();reject(new Error("LOCAL_STAGE_TIMEOUT"));},600_000);
       child.once("error",e=>{clearTimeout(timer);reject(e);});
-      child.once("exit",code=>{clearTimeout(timer);code===0?accept():reject(new Error(`LOCAL_STAGE_FAILED exit=${code}: ${sanitizeProviderError(error)}`));});
+      child.once("exit",code=>{clearTimeout(timer);const lines=error.trim().split(/\r?\n/);const diagnostic=lines.filter(line=>/^\w*(Error|Exception):|^\s*code:/.test(line));code===0?accept():reject(new Error(`LOCAL_STAGE_FAILED exit=${code}: ${sanitizeProviderError((diagnostic.length?diagnostic:lines.slice(-2)).join(' '))}`));});
     });
   }
 }

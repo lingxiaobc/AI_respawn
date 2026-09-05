@@ -10,7 +10,7 @@ export interface RoleJob {
   id: string; version: 1; idempotencyKey: string; sourceHash: string; fileName: string;
   mode: "live" | "fixture"; status: "queued" | "running" | "paused" | "awaiting_review" | "approved" | "rejected";
   stage: Stage; completed: Partial<Record<Stage, Checkpoint>>;
-  createdAt: string; updatedAt: string; error?: string; resource?: string; resourceHash?: string;
+  createdAt: string; updatedAt: string; error?: string; resource?: string; resourceHash?: string; pipelineVersion?: string;
   review?: { decision: "approved" | "rejected"; note: string; resourceHash: string; at: string };
 }
 export const hash = (bytes: Uint8Array | string) => createHash("sha256").update(bytes).digest("hex");
