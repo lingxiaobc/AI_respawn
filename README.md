@@ -2,7 +2,7 @@
 
 这是一个本地、单用户、半双工的实时语音验证项目：在 Windows Chrome 中自动监听用户说话，连续静音约 1.2 秒后由豆包 Realtime 3.0 流式返回语音并立即播放。
 
-当前版本刻意不包含声音复刻、逝者真实资料、数字人、RAG、长期记忆、全双工、语义判停、移动端或公网部署。
+当前分支增加了 DH_live_mini 固定示例数字人：浏览器本机运行 WASM，豆包返回的音频驱动嘴型。头部轮廓、颈部和身体均固定；只有局部眨眼与脸部内部的嘴型变化。详细边界与测试证据见 [数字人开发记录](docs/DH_LIVE_MINI.md)。暂不包含自定义人物制作、声音复刻、逝者真实资料、RAG、长期记忆、全双工、语义判停、移动端或公网部署。
 
 ## 启动
 
@@ -19,7 +19,7 @@ Copy-Item .env.example .env
 npm run dev
 ```
 
-随后在 Chrome 打开 <http://127.0.0.1:5173/>。允许麦克风权限后页面会在本地自动监听；检测到有效说话后才开启一轮上游音频，连续静音约 1.2 秒后自动提交。播放期间录音会锁定，避免串轮。
+随后在 Chrome 打开 <http://127.0.0.1:5173/>。可先点击“播放示例音频”观察人物，无需麦克风或豆包调用。点击“开始语音通话”后连接豆包并申请麦克风权限；检测到有效说话后才开启一轮上游音频，连续静音约 1.2 秒后自动提交。播放期间录音会锁定，避免串轮。关闭数字人可使用原纯语音播放。
 
 ## 验证命令
 
@@ -27,6 +27,7 @@ npm run dev
 npm run check          # TypeScript 静态检查
 npm test               # 离线协议、音频、状态机与脱敏测试
 npm run build          # 生产浏览器构建
+npm run avatar:verify  # 固定人物和 WASM 资源完整性
 npm run devices        # 列出本机录放音设备
 npm run capture:check  # 4 秒本地麦克风检查；不联网、不落盘
 npm run probe          # 固定 WAV 直连供应商 Gate 1 探针
@@ -57,7 +58,8 @@ npm run diagnostics -- --id=deadbeef --export=artifacts/diagnostics-export.jsonl
 - 浏览器采集：单声道 Float32，经 AudioWorklet 降采样为 16 kHz PCM16。
 - 输入帧：20 ms，320 samples，严格 640 bytes。
 - 供应商输出：24 kHz、单声道、PCM16，以二进制帧转给浏览器。
-- 播放：Web Audio 单调时间轴调度，禁止重叠；实际设备采样率由浏览器正确重采样。
+- 数字人播放：24→16 kHz 连续降采样，以 320 ms WAV 分片交给同源 iframe 内的 WASM 和 Web Audio；音频逐片播放，整轮播放结束才回执。
+- 纯语音播放：沿用 Web Audio 单调时间轴调度；实际设备采样率由浏览器重采样。
 - 会话：浏览器 WebSocket 与供应商 WebSocket 一一映射，限定 localhost Origin、状态转换、背压、阶段超时和关闭清理；有效语音确认前仅本地监听，不占用供应商轮次。
 
 详细契约见 [`docs/provider-contract.md`](docs/provider-contract.md)，状态机和 Gate 见 [`docs/architecture.md`](docs/architecture.md)。

@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "avatar:verify": "node --experimental-strip-types scripts/verify-avatar.ts",
     "check": "tsc --noEmit",
     "dev": "node --experimental-strip-types scripts/dev.ts",
     "server": "node --experimental-strip-types apps/server/src/server.ts",

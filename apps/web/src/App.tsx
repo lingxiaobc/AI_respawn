@@ -6,6 +6,7 @@ import {
   type TurnDetectorState,
 } from "../../../packages/audio/src/turn-detector.ts";
 import type { GatewayMessage, GatewayState } from "../../../packages/protocol/src/browser.ts";
+import { AvatarPlayer } from "./avatar-player.ts";
 
 type UiState = GatewayState | "initializing";
 
@@ -38,7 +39,7 @@ const detectorConfig = DEFAULT_TURN_DETECTOR_CONFIG;
 const PRE_ROLL_FRAME_COUNT = 25;
 
 export function App() {
-  const [state, setState] = useState<UiState>("connecting");
+  const [state, setState] = useState<UiState>("ready");
   const [turnPhase, setTurnPhase] = useState<TurnDetectorState>("waiting");
   const [round, setRound] = useState(0);
   const [diagnosticId, setDiagnosticId] = useState<string | null>(null);
@@ -57,6 +58,50 @@ export function App() {
   const playbackTimerRef = useRef<number | null>(null);
   const firstAudioSeenRef = useRef(false);
   const preRollRef = useRef<ArrayBuffer[]>([]);
+  const avatarFrameRef = useRef<HTMLIFrameElement | null>(null);
+  const avatarRef = useRef<AvatarPlayer | null>(null);
+  const avatarRoundRef = useRef(false);
+  const roundAudioStartedRef = useRef(false);
+  const sampleRef = useRef(false);
+  const [avatarStatus, setAvatarStatus] = useState("正在加载人物");
+  const [avatarReady, setAvatarReady] = useState(false);
+  const [avatarEnabled, setAvatarEnabled] = useState(true);
+  const avatarEnabledRef = useRef(true);
+  const [callStarted, setCallStarted] = useState(false);
+  const [samplePlaying, setSamplePlaying] = useState(false);
+  const [sampleCount, setSampleCount] = useState(0);
+  const sampleTimersRef = useRef<number[]>([]);
+
+  useEffect(() => {
+    const frame = avatarFrameRef.current;
+    if (!frame) return;
+    const player = new AvatarPlayer(frame, (event, message) => {
+      if (event === "ready") { setAvatarReady(true); setAvatarStatus("人物已就绪"); }
+      if (event === "started") {
+        setAvatarStatus("正在播报");
+        if (!sampleRef.current) setLatencyMs(Math.round(performance.now() - turnEndedAtRef.current));
+      }
+      if (event === "done") {
+        setAvatarStatus(player.ready ? "人物已就绪" : "已切换纯语音");
+        if (sampleRef.current) {
+          sampleRef.current = false; setSamplePlaying(false); setSampleCount(n => n + 1);
+        } else {
+          const socket = socketRef.current;
+          if (socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: "playback.done" }));
+        }
+      }
+      if (event === "error") {
+        setAvatarReady(false); setAvatarStatus(message ?? "人物不可用");
+        avatarEnabledRef.current = false; setAvatarEnabled(false);
+        if (sampleRef.current) {
+          sampleRef.current = false; setSamplePlaying(false);
+          sampleTimersRef.current.forEach(window.clearTimeout);
+        }
+      }
+    });
+    avatarRef.current = player;
+    return () => { sampleTimersRef.current.forEach(window.clearTimeout); player.dispose(); avatarRef.current = null; };
+  }, []);
 
   const updateState = useCallback((next: UiState) => {
     stateRef.current = next;
@@ -80,6 +125,16 @@ export function App() {
   }, []);
 
   const enqueuePlayback = useCallback((arrayBuffer: ArrayBuffer) => {
+    if (!roundAudioStartedRef.current) {
+      roundAudioStartedRef.current = true;
+      avatarRoundRef.current = avatarEnabledRef.current && !!avatarRef.current?.ready;
+      if (avatarRoundRef.current) avatarRef.current!.begin();
+    }
+    if (avatarRoundRef.current) {
+      avatarRef.current?.push(arrayBuffer);
+      updateState("speaking");
+      return;
+    }
     const context = audioContextRef.current;
     if (!context) return;
     const pcm = new Int16Array(arrayBuffer);
@@ -103,6 +158,7 @@ export function App() {
   }, [updateState]);
 
   const finishPlayback = useCallback(() => {
+    if (avatarRoundRef.current) { avatarRef.current?.finish(); return; }
     const context = audioContextRef.current;
     if (!context) return;
     const waitMs = Math.max(0, (nextPlaybackAtRef.current - context.currentTime) * 1000);
@@ -204,6 +260,8 @@ export function App() {
     setLatencyMs(null);
     setTurnPhase("waiting");
     firstAudioSeenRef.current = false;
+    roundAudioStartedRef.current = false;
+    avatarRoundRef.current = false;
     nextPlaybackAtRef.current = 0;
     detectorRef.current.reset();
     preRollRef.current = [];
@@ -222,7 +280,9 @@ export function App() {
   }, [ensureAudio, reportDiagnostic, updateState]);
 
   useEffect(() => {
+    if (!callStarted) return;
     let disposed = false;
+    updateState("connecting");
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
     const socket = new WebSocket(`${protocol}//${location.host}/ws`);
     socket.binaryType = "arraybuffer";
@@ -236,6 +296,8 @@ export function App() {
       if (message.diagnostic_id) setDiagnosticId(message.diagnostic_id);
       if (message.round) setRound(message.round);
       if (message.type === "error") {
+        avatarRef.current?.stop();
+        captureRef.current?.port.postMessage({ active: false });
         setError(message.message ?? "本地网关返回错误");
         updateState("error");
       } else if (message.type === "state" && message.state && message.state !== "closed") {
@@ -252,6 +314,7 @@ export function App() {
       }
     };
     socket.onclose = () => {
+      if (!sampleRef.current) avatarRef.current?.stop();
       if (!disposed && stateRef.current !== "error") updateState("closed");
     };
     return () => {
@@ -262,13 +325,50 @@ export function App() {
       streamRef.current?.getTracks().forEach((track) => track.stop());
       void audioContextRef.current?.close();
     };
-  }, [enqueuePlayback, finishPlayback, reportDiagnostic, updateState]);
+  }, [callStarted, enqueuePlayback, finishPlayback, reportDiagnostic, updateState]);
 
   useEffect(() => {
-    if (state !== "ready" || autoStartRef.current) return;
+    if (!callStarted || state !== "ready" || autoStartRef.current) return;
     autoStartRef.current = true;
     void startListening().finally(() => { autoStartRef.current = false; });
-  }, [startListening, state]);
+  }, [callStarted, startListening, state]);
+
+  const playSample = async () => {
+    const player = avatarRef.current;
+    if (!player?.ready || sampleRef.current || callStarted) return;
+    sampleRef.current = true; setSamplePlaying(true); setAvatarStatus("准备示例音频");
+    let decoder: AudioContext | undefined;
+    try {
+      // Decode only the bundled public sample. No microphone or API is used.
+      decoder = new AudioContext({ sampleRate: 24_000 });
+      const response = await fetch("/dh-live/common/test.wav");
+      if (!response.ok) throw new Error("示例音频加载失败");
+      const audio = await decoder.decodeAudioData(await response.arrayBuffer());
+      const floats = audio.getChannelData(0);
+      const pcm = Int16Array.from(floats, sample => Math.round(Math.max(-1, Math.min(1, sample)) * (sample < 0 ? 32768 : 32767)));
+      player.begin();
+      sampleTimersRef.current = [];
+      // Replay in 80 ms network-sized pieces, without waiting for the full response.
+      for (let offset = 0; offset < pcm.length; offset += 1920) {
+        const segment = pcm.slice(offset, offset + 1920).buffer;
+        sampleTimersRef.current.push(window.setTimeout(() => player.push(segment), offset / 24));
+      }
+      sampleTimersRef.current.push(window.setTimeout(() => player.finish(), pcm.length / 24 + 1));
+    } catch (cause) {
+      sampleRef.current = false; setSamplePlaying(false);
+      setAvatarStatus(cause instanceof Error ? cause.message : "示例播放失败");
+    } finally { await decoder?.close(); }
+  };
+
+  const endCall = () => {
+    setCallStarted(false); avatarRef.current?.stop();
+    sampleTimersRef.current.forEach(window.clearTimeout);
+    captureRef.current?.port.postMessage({ active: false });
+    streamRef.current?.getTracks().forEach(track => track.stop());
+    if (playbackTimerRef.current !== null) window.clearTimeout(playbackTimerRef.current);
+    if (socketRef.current?.readyState === WebSocket.OPEN) sendControl("session.close");
+    updateState("closed");
+  };
 
   const statusText = error ?? (state === "listening" ? turnCopy[turnPhase] : stateCopy[state]);
 
@@ -276,23 +376,28 @@ export function App() {
     <main className={`shell is-${state} phase-${turnPhase}`}>
       <header className="topbar">
         <div className="brand"><span className="brand-mark" />声息</div>
-        <div className="privacy"><span />仅本机 · 密钥隔离</div>
+        <div className="privacy"><span />人物本机驱动 · 密钥隔离</div>
       </header>
       <section className="stage" aria-labelledby="page-title">
-        <p className="eyebrow">AI REALTIME VOICE / AUTO ENDPOINTING</p>
-        <h1 id="page-title">说一句，听见回应。</h1>
-        <p className="lede">自动监听你的声音。检测到停顿后，约 1.2 秒内提交本轮，让每个状态都清楚可见。</p>
-        <div className="voice-control" aria-hidden="true">
-          <div className="orbit orbit-one" /><div className="orbit orbit-two" />
-          <div className="listen-core">
-            <span className="mic-glyph" />
-            <strong>{state === "listening" ? "自动聆听" : stateCopy[state]}</strong>
-            <small>{state === "listening" ? "SILENCE TO SEND" : "AUTO TURN DETECTION"}</small>
-          </div>
+        <p className="eyebrow">DOUBAO VOICE / DH_LIVE_MINI</p>
+        <h1 id="page-title">让回应，有了面容。</h1>
+        <p className="lede">先播放示例观察嘴型，再开始豆包语音通话。人物在本机浏览器中驱动。</p>
+        <div className="avatar-stage">
+          <iframe ref={avatarFrameRef} title="固定示例数字人" src="/dh-live/frame.html" allow="autoplay" />
+          {!avatarEnabled && <div className="avatar-fallback">纯语音模式</div>}
         </div>
-        <div className="status-line" role="status" aria-live="polite"><span className="status-dot" />{statusText}</div>
+        <p className="avatar-status" role="status">{avatarStatus} · 示例完成 {sampleCount} 次</p>
+        <div className="avatar-actions">
+          <button type="button" onClick={() => void playSample()} disabled={!avatarReady || !avatarEnabled || samplePlaying || callStarted}>播放示例音频</button>
+          <button type="button" onClick={() => setCallStarted(true)} disabled={samplePlaying || callStarted || state !== "ready" || (avatarEnabled && !avatarReady)}>开始语音通话</button>
+          {callStarted && <button type="button" onClick={endCall}>结束通话</button>}
+          <label><input type="checkbox" checked={avatarEnabled} disabled={callStarted || samplePlaying || !avatarReady}
+            onChange={event => { avatarEnabledRef.current = event.target.checked; setAvatarEnabled(event.target.checked); }} />显示数字人</label>
+        </div>
+        <p className="avatar-note">固定上游示例人物，保留 MatesX 标识。头部、颈部和身体固定，仅保留眨眼与面部内部的嘴型变化。</p>
+        <div className="status-line" role="status" aria-live="polite"><span className="status-dot" />{!callStarted && state === "ready" ? "可播放示例，或开始语音通话" : statusText}</div>
         {diagnosticId && <div className="diagnostic-id">诊断 ID：{diagnosticId}</div>}
-        {state === "error" && <button className="retry" type="button" onClick={() => location.reload()}>重新连接</button>}
+        {(state === "error" || state === "closed") && <button className="retry" type="button" onClick={() => location.reload()}>重新连接</button>}
       </section>
       <section className="telemetry" aria-label="会话状态">
         <div className="state-track">

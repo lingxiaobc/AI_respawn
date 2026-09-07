@@ -1,0 +1,25 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>固定人物 · DH_live_mini</title>
+  <style>
+    body { margin:0; background:#11191b; overflow:hidden; color:#e6efed; font:14px system-ui; }
+    #canvas_video { width:100vw; height:100vh; object-fit:contain; }
+    #canvas_gl,#canvasEl,#screen { position:absolute; left:-10000px; }
+    #loadingSpinner,#startMessage { position:absolute; top:45%; width:100%; text-align:center; }
+    #screen { width:1px; height:1px; }
+  </style>
+</head>
+<body>
+  <div id="loadingSpinner">正在加载示例人物…</div><div id="startMessage"></div>
+  <canvas id="canvasEl"></canvas><canvas id="canvas_video"></canvas>
+  <canvas id="canvas_gl" width="184" height="184"></canvas><div id="screen"></div>
+  <script src="js/pako.min.js"></script>
+  <script src="js/DHLiveMini.js"></script>
+  <script src="js/qt-loader.js"></script>
+  <script src="js/MiniLive2.js"></script>
+  <script src="runtime.js"></script>
+</body>
+</html>
