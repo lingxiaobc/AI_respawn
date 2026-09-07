@@ -16,7 +16,12 @@ logs/
 diagnostics-export*.jsonl
 *.log
 
+# Local avatar test inputs and model weights
+epoch_40_new.pth
+test_images/
+
 # OS/editor noise
+__pycache__/
 .DS_Store
 Thumbs.db
 .idea/
