@@ -2,7 +2,7 @@
 
 这是一个本地、单用户、半双工的实时语音验证项目：在 Windows Chrome 中自动监听用户说话，连续静音约 1.2 秒后由豆包 Realtime 3.0 流式返回语音并立即播放。
 
-当前分支增加了 DH_live_mini 固定示例数字人：浏览器本机运行 WASM，豆包返回的音频驱动嘴型。头部轮廓、颈部和身体均固定；只有局部眨眼与脸部内部的嘴型变化。详细边界与测试证据见 [数字人开发记录](docs/DH_LIVE_MINI.md)。暂不包含自定义人物制作、声音复刻、逝者真实资料、RAG、长期记忆、全双工、语义判停、移动端或公网部署。
+当前分支支持每批上传 1—3 张照片，一图一角色，在本机依次制作 DH_live_mini 人物资源，再由豆包实时回复音频驱动嘴型。历史角色总数不设上限，SQLite 保存人物、任务与通话元数据。头部轮廓、颈部、身体和背景固定，只变化嘴部及其附近，不添加眨眼。浏览器本机运行 WASM，无需 GPU 服务器。当前为本机单用户原型，不含账号、管理员、声音复刻、RAG、长期记忆、全双工或公网部署。当前规则见 [批量人物与通话阶段](docs/BATCH_CALL_PHASE.md)，环境恢复见 [照片实时通话说明](docs/PHOTO_REALTIME_LOCAL.md)。
 
 ## 启动
 
@@ -10,16 +10,21 @@
 
 ```powershell
 npm install
-Copy-Item .env.example .env
+# 仅当尚无 .env 时复制；已有配置不要覆盖。
+if (-not (Test-Path .env)) { Copy-Item .env.example .env }
 ```
 
-在 `.env` 中填写 `DOUBAO_API_KEY`。密钥只由本地 Node 网关读取；`.env` 已被 Git 忽略，浏览器构建中不包含密钥或供应商鉴权头。
+在 `.env` 中填写 `DOUBAO_API_KEY`、`ZENMUX_API_KEY`、`IMAGE_MODEL_ID` 和 `ROLLBACK_MODEL`。新照片全部经 ZenMux 规范取景，保留原有表情、五官皱纹和背景，再在本地制作；主图片模型失败自动使用备用模型一次。密钥只由本地 Node 网关读取，浏览器和 Python 不接收密钥。详见[角色管理与照片规范化](docs/ROLE_MANAGEMENT_NORMALIZATION.md)。
 
 ```powershell
 npm run dev
 ```
 
-随后在 Chrome 打开 <http://127.0.0.1:5173/>。可先点击“播放示例音频”观察人物，无需麦克风或豆包调用。点击“开始语音通话”后连接豆包并申请麦克风权限；检测到有效说话后才开启一轮上游音频，连续静音约 1.2 秒后自动提交。播放期间录音会锁定，避免串轮。关闭数字人可使用原纯语音播放。
+首次使用照片前，需将已验证的 `epoch_40_new.pth` 放到根目录，安装 Git 与 uv，然后运行 `npm run avatar:setup`。该命令在 `.cache/` 恢复固定上游版本、Python 3.12 与 CPU 处理依赖，不下载或修改你的照片；已有本机环境可复用。模型、缓存和生成资源不随 Git 同步。
+
+随后在 Chrome 打开 <http://127.0.0.1:5173/>，选择 1—3 张照片并开始制作。一个角色成功即可进入通话页面，点击绿色接听按钮后正式通话；此时后台制作暂停，挂断后自动继续。每张失败不阻断其他照片，可单独重试，成功的标准照片会复用。角色卡片提供重命名、角色设定和软删除，删除仅归档且保留媒体。接听前不连接语音或使用麦克风；接听后只申请麦克风、不调用摄像头。有效说话后连续静音约 1.2 秒自动提交，AI 播放期间停止收音。挂断返回列表；意外退出的未完成任务显示中断，需手动重试。
+
+网关默认端口为 `8877`，避免部分 Windows 系统保留的 `8787`。如需修改，在 `.env` 设置 `PORT`，重启 `npm run dev`，前端代理会读取同一配置。
 
 ## 验证命令
 
@@ -28,6 +33,7 @@ npm run check          # TypeScript 静态检查
 npm test               # 离线协议、音频、状态机与脱敏测试
 npm run build          # 生产浏览器构建
 npm run avatar:verify  # 固定人物和 WASM 资源完整性
+npm run avatar:setup   # 首次恢复本机照片处理环境（需根目录权重）
 npm run devices        # 列出本机录放音设备
 npm run capture:check  # 4 秒本地麦克风检查；不联网、不落盘
 npm run probe          # 固定 WAV 直连供应商 Gate 1 探针
@@ -36,11 +42,11 @@ npm run ptt            # 5 轮本机 CLI 音频验证（诊断用）
 npm run diagnostics    # 查看或筛选本地脱敏诊断日志
 ```
 
-真实麦克风输入不会写入文件。`artifacts/` 仅用于固定公开测试样本的探针回复，且已被 Git 忽略。
+真实麦克风输入不会写入文件。`artifacts/` 保存人物数据库、上传照片、标准图、嘴部资源以及测试与诊断产物，已被 Git 忽略；其中的人物资料需要保留和备份。
 
 ## 诊断日志
 
-网关、固定探针和 CLI 会在项目根目录 `logs/` 生成按日期滚动的 JSONL 诊断日志，默认保留最近 7 天。浏览器页面会显示本次会话的简短“诊断 ID”，发生问题时连同该 ID 一起反馈即可。v2 日志包含状态转换、阶段里程碑、阶段耗时、最后里程碑、provider `error.type/code/param`、event ID、关闭信息和音频计数；音频 delta 只累计字节/分片，不逐条写入。
+网关、固定探针和 CLI 会在项目根目录 `logs/` 生成按日期滚动的 JSONL 诊断日志；通话网关保留最近 30 天，独立诊断工具沿用各自默认期限。日志包含状态转换、阶段里程碑、阶段耗时、最后里程碑、provider `error.type/code/param`、event ID、关闭信息和音频计数；音频 delta 只累计字节/分片，不逐条写入。
 
 ```powershell
 npm run diagnostics                         # 最近 50 条记录
@@ -73,9 +79,9 @@ npm run diagnostics -- --id=deadbeef --export=artifacts/diagnostics-export.jsonl
 - 仅验证 Windows Chrome 与单用户 localhost。
 - 麦克风首次使用需要浏览器授权。
 - 当前采用自动静音判停的半双工；本地检测到有效声音约 200 ms 后开始一轮并发送最多 500 ms 预录，连续静音 1.2 秒提交，单轮最长 30 秒；模型说话期间不能插话。
-- 没有公网 TLS、账户、持久化、并发隔离或费用面板。
+- 人物和任务已持久化；不保存聊天正文、通话录音或跨场记忆。没有公网 TLS、账户、多用户或费用面板。
 - API 若返回 4xx，应先核对控制台开通状态、API Key 和协议版本，不要盲目重试。
 
 ## 停止与清理
 
-在运行 `npm run dev` 的终端按 `Ctrl+C`。网关会关闭浏览器和供应商会话；无需保留时可删除被忽略的 `artifacts/` 探针输出。不要提交 `.env`。
+在运行 `npm run dev` 的终端按 `Ctrl+C`。网关会关闭会话与当前制作任务。`artifacts/avatars/` 包含人物数据库、上传原图和成功素材，需要保留；不要把整个 `artifacts/` 当作临时探针输出删除。备份或迁移人物时先停止服务，再完整复制 `artifacts/avatars/`。不要提交 `.env`。
