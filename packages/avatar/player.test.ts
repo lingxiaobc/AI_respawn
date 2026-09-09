@@ -40,3 +40,26 @@ test("avatar bridge rejects wrong origins/sources, premature, duplicate and stal
     if (previousLocation) Object.defineProperty(globalThis, "location", previousLocation); else Reflect.deleteProperty(globalThis, "location");
   }
 });
+
+test("a video fault between completed replies never emits a second playback completion", () => {
+  let receive: (event: unknown) => void = () => {};
+  const sent: Array<{round:number}> = [], events:string[]=[];
+  const peer={postMessage:(message:{round:number})=>sent.push(message)};
+  const previousWindow=Object.getOwnPropertyDescriptor(globalThis,"window");
+  const previousLocation=Object.getOwnPropertyDescriptor(globalThis,"location");
+  Object.defineProperty(globalThis,"window",{configurable:true,value:{
+    addEventListener:(_:string,fn:typeof receive)=>{receive=fn;},removeEventListener:()=>{}
+  }});
+  Object.defineProperty(globalThis,"location",{configurable:true,value:{origin:"http://test"}});
+  const player=new AvatarPlayer({contentWindow:peer} as unknown as HTMLIFrameElement,event=>events.push(event));
+  const message=(type:string)=>receive({origin:"http://test",source:peer,data:{source:"dh-live",type,round:sent.at(-1)?.round??0}});
+  try {
+    message("ready");player.begin();player.finish();message("done");
+    message("error");message("error");
+    assert.deepEqual(events,["ready","done","error"]);
+  } finally {
+    player.dispose();
+    if(previousWindow)Object.defineProperty(globalThis,"window",previousWindow);else Reflect.deleteProperty(globalThis,"window");
+    if(previousLocation)Object.defineProperty(globalThis,"location",previousLocation);else Reflect.deleteProperty(globalThis,"location");
+  }
+});

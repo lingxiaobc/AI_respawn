@@ -9,7 +9,9 @@ const manifest = JSON.parse(await readFile(path.join(root, "manifest.json"), "ut
 for (const file of manifest.files) {
   const target = path.resolve(root, file.path);
   if (!target.startsWith(root + path.sep)) throw new Error("Manifest path escapes resource root");
-  const data = await readFile(target);
+  const raw = await readFile(target);
+  // Text hashes are canonical LF so Windows checkouts do not fail integrity checks.
+  const data = /\.(?:js|html)$/.test(file.path) ? Buffer.from(raw.toString("utf8").replaceAll("\r\n", "\n")) : raw;
   if (data.byteLength !== file.bytes || createHash("sha256").update(data).digest("hex") !== file.sha256) {
     throw new Error(`Avatar resource mismatch: ${file.path}`);
   }
