@@ -1,0 +1,10 @@
+# CPU photo preparation for the pinned DH_live mini2 revision, Python 3.12.
+numpy==1.26.4
+mediapipe==0.10.21
+opencv-contrib-python==4.11.0.86
+pillow==11.3.0
+imageio-ffmpeg==0.6.0
+tqdm==4.70.0
+scikit-learn==1.9.0
+scipy==1.17.1
+kaldi-native-fbank==1.22.3

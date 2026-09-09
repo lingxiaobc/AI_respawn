@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "avatar:setup": "powershell -NoProfile -File scripts/setup-avatar.ps1",
     "avatar:verify": "node --experimental-strip-types scripts/verify-avatar.ts",
     "check": "tsc --noEmit",
     "dev": "node --experimental-strip-types scripts/dev.ts",

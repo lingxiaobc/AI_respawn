@@ -12,8 +12,11 @@ import {
   type GatewayState,
 } from "../../../packages/protocol/src/browser.ts";
 import { loadLocalEnv } from "../../../scripts/env.ts";
+import { AvatarService } from "./avatar-service.ts";
+import { ZenMuxPortraitStandardizer } from "./portrait-standardizer.ts";
+import { roleInstructions } from "./role-instructions.ts";
+import { CallClock } from "../../../packages/protocol/src/call-clock.ts";
 
-const PORT = Number.parseInt(process.env.PORT ?? "8787", 10);
 const MAX_BUFFERED_BYTES = 1_048_576;
 const INPUT_FRAME_BYTES = 640;
 const LISTENING_TIMEOUT_MS = 35_000;
@@ -21,9 +24,10 @@ const THINKING_TIMEOUT_MS = 20_000;
 const SPEAKING_TIMEOUT_MS = 120_000;
 
 await loadLocalEnv();
+const PORT = Number.parseInt(process.env.PORT ?? "8877", 10);
 const apiKey = process.env.DOUBAO_API_KEY?.trim();
 if (!apiKey) throw new Error("DOUBAO_API_KEY is required in the untracked .env file");
-const diagnostics = new DiagnosticLogger({ directory: process.env.DIAGNOSTICS_DIR ?? resolve("logs"), retentionDays: 7 });
+const diagnostics = new DiagnosticLogger({ directory: process.env.DIAGNOSTICS_DIR ?? resolve("logs"), retentionDays: 30 });
 
 function isAllowedOrigin(request: IncomingMessage): boolean {
   const origin = request.headers.origin;
@@ -31,6 +35,17 @@ function isAllowedOrigin(request: IncomingMessage): boolean {
 }
 
 class BrowserSession {
+  #closingTask?: Promise<void>;
+  #abort = new AbortController();
+  #clock = new CallClock();
+  #activated = false;
+  #tick?: NodeJS.Timeout;
+  #prepareTimer?: NodeJS.Timeout;
+  #lastPong = performance.now();
+  #totalInput = 0;
+  #totalOutput = 0;
+  #endReason = "USER_HANGUP";
+  #avatarId?: string;
   readonly #browser: WebSocket;
   readonly #provider: DoubaoRealtimeClient;
   readonly #sessionId: string;
@@ -65,7 +80,8 @@ class BrowserSession {
   #providerErrorParam?: string;
   #providerMessage?: string;
 
-  constructor(browser: WebSocket) {
+  constructor(browser: WebSocket, avatarId?: string) {
+    this.#avatarId = avatarId;
     this.#browser = browser;
     const identity = createIdentity();
     this.#sessionId = identity.sessionId;
@@ -76,9 +92,8 @@ class BrowserSession {
       session: {
         model: process.env.DOUBAO_MODEL,
         voice: process.env.DOUBAO_VOICE,
-        instructions:
-          process.env.DOUBAO_INSTRUCTIONS ??
-          "你是一位温和、简洁的中文语音助手。每次回答不超过两句话。",
+        instructions: roleInstructions(avatarId?avatars.store.active(avatarId):null,
+          process.env.DOUBAO_INSTRUCTIONS ?? "你是一位温和、简洁的中文语音助手。每次回答不超过两句话。"),
       },
       timeoutMs: 45_000,
     });
@@ -108,23 +123,49 @@ class BrowserSession {
       void this.close();
     });
     browser.once("error", () => void this.close());
+    browser.on("pong", () => { this.#lastPong = performance.now(); });
   }
 
   async start(): Promise<void> {
     this.#sendJson({ type: "state", state: "connecting" });
     try {
+      this.#prepareTimer = setTimeout(() => this.#fail("PREPARATION_TIMEOUT", "通话准备超时，请重新呼叫"),60_000);
+      await avatars.acquireCall(this.#avatarId,this.#sessionId,this.#abort.signal);
+      if(this.#closed)return;
+      this.#sendJson({type:"prepared"});
       await this.#provider.connect();
+      if(this.#closed)return;
       this.#transition("ready");
+      this.#lastPong=performance.now();
+      this.#tick = setInterval(() => {
+        if(this.#closed)return;
+        const now=performance.now();
+        if(now-this.#lastPong>15_000){this.#endReason="NETWORK_TIMEOUT";this.#browser.terminate();void this.close();return;}
+        if(this.#browser.readyState===WebSocket.OPEN)this.#browser.ping();
+        const clock=this.#clock.snapshot(now);
+        if(clock) {
+          this.#sendJson({type:"clock",...clock});
+          if(clock.ended){this.#endReason=clock.ended;this.#fail(clock.ended,clock.ended==="MAX_DURATION"?"本次通话已到 15 分钟":"长时间未讲话，通话已结束");}
+        }
+      },1000);
     } catch (error) {
       this.#fail("UPSTREAM_CONNECT", error instanceof Error ? error.message : "Provider connection failed");
     }
   }
 
-  async close(): Promise<void> {
-    if (this.#closed) return;
+  close(reason?: string): Promise<void> {
+    if (this.#closingTask) return this.#closingTask;
+    if(reason)this.#endReason=reason;
     this.#closed = true;
+    this.#abort.abort();
+    clearInterval(this.#tick);clearTimeout(this.#prepareTimer);
+    this.#closingTask=this.#finishClose();
+    return this.#closingTask;
+  }
+  async #finishClose(): Promise<void> {
     if (!["closing", "closed"].includes(this.#state)) this.#transition("closing");
     await this.#provider.close().catch(() => undefined);
+    avatars.releaseCall(this.#sessionId,this.#endReason,this.#totalInput,this.#totalOutput);
     if (this.#phaseTimer) clearTimeout(this.#phaseTimer);
     this.#state = "closed";
     this.#sendJson({ type: "state", state: "closed" });
@@ -161,6 +202,10 @@ class BrowserSession {
         if (pcm.byteLength !== INPUT_FRAME_BYTES) throw new Error("Input frame must be exactly 640 bytes");
         this.#inputFrames += 1;
         this.#inputBytes += pcm.byteLength;
+        this.#totalInput += pcm.byteLength;
+        let energy=0;
+        for(let offset=0;offset<pcm.length;offset+=2)energy+=(pcm.readInt16LE(offset)/32768)**2;
+        if(Math.sqrt(energy/(pcm.length/2))>=0.02)this.#clock.activity(performance.now());
         this.#lastAudioAt = performance.now();
         if (this.#inputFrames === 1) this.#markMilestone("first_audio_sent");
         this.#provider.appendAudio(pcm);
@@ -168,7 +213,15 @@ class BrowserSession {
       }
 
       const control = parseBrowserControl(Buffer.from(data as ArrayBuffer).toString("utf8"));
-      if (control.type === "ptt.start") {
+      if (control.type === "session.active") {
+        if(this.#state!=="ready")throw new Error("Media readiness requires a ready session");
+        if(!this.#activated){this.#activated=true;clearTimeout(this.#prepareTimer);this.#clock.activate(performance.now());avatars.store.connectedCall(this.#sessionId);}
+      } else if(control.type === "session.continue") {
+        if(this.#state==="ready"||this.#state==="listening")this.#clock.activity(performance.now());
+      } else if (control.type === "ptt.start") {
+        // Explicit fixed-audio diagnostics use the legacy control flow.
+        if(!this.#activated){this.#activated=true;clearTimeout(this.#prepareTimer);this.#clock.activate(performance.now());avatars.store.connectedCall(this.#sessionId);}
+        this.#clock.activity(performance.now());
         if (this.#state !== "ready") throw new Error(`Cannot start PTT from ${this.#state}`);
         this.#round += 1;
         this.#roundStartedAt = performance.now();
@@ -234,6 +287,8 @@ class BrowserSession {
   }
 
   #onProviderEvent(event: ServerEvent): void {
+    avatars.store.recordUsage(this.#sessionId,event);
+    if(this.#closed)return;
     if (typeof event.event_id === "string") this.#lastProviderEventId = event.event_id;
     this.#providerEventCount += 1;
     const summary = safeEventSummary(event);
@@ -261,7 +316,9 @@ class BrowserSession {
       this.#providerErrorCode = summary.error_code;
       this.#providerErrorParam = summary.error_param;
       this.#providerMessage = summary.message;
-      this.#fail("UPSTREAM_EVENT", summary.message ?? summary.error_code ?? "Provider returned an error");
+      this.#fail("UPSTREAM_EVENT", summary.message === "Abnormal silence audio"
+        ? "语音服务长时间未收到讲话，本次通话已结束，请重新呼叫"
+        : "语音服务暂时不可用，请稍后重新呼叫");
       return;
     }
     if (event.type === "input_audio_buffer.committed") this.#markMilestone("input_committed");
@@ -290,6 +347,7 @@ class BrowserSession {
     this.#firstProviderAudioAt ||= performance.now();
     this.#outputChunks += 1;
     this.#outputBytes += pcm.byteLength;
+    this.#totalOutput += pcm.byteLength;
     if (this.#browser.bufferedAmount > MAX_BUFFERED_BYTES) {
       this.#fail("BROWSER_BACKPRESSURE", "Browser audio queue exceeded 1 MiB");
       return;
@@ -337,6 +395,8 @@ class BrowserSession {
     const now = performance.now();
     const phaseDuration = Math.round(now - this.#stateEnteredAt);
     this.#state = next;
+    if(next==="thinking"||next==="speaking")this.#clock.busy();
+    if(next==="ready"&&this.#activated)this.#clock.listening(now);
     this.#stateEnteredAt = now;
     if (this.#phaseTimer) clearTimeout(this.#phaseTimer);
     this.#phaseTimer = undefined;
@@ -372,6 +432,8 @@ class BrowserSession {
   }
 
   #fail(code: string, message: string, extra: Partial<Parameters<typeof diagnostics.write>[0]> = {}): void {
+    if(this.#closed)return;
+    this.#endReason=code;
     if (this.#state !== "error" && !["closing", "closed"].includes(this.#state)) {
       this.#errorLogged = true;
       if (this.#round > 0) {
@@ -470,6 +532,7 @@ class BrowserSession {
       provider_event_type: detail.kind,
       event_direction: "inbound",
     });
+    if(detail.kind === "socket_closed") this.#fail("UPSTREAM_DISCONNECTED", "语音连接已断开，请重新呼叫");
   }
 
   #markMilestone(name: string): void {
@@ -492,7 +555,10 @@ class BrowserSession {
   }
 }
 
+const avatars = new AvatarService(resolve(process.env.AVATAR_STORAGE_DIR ?? "artifacts/avatars"),undefined,new ZenMuxPortraitStandardizer());
+await avatars.initialized;
 const server = createServer((request, response) => {
+  if (request.url?.startsWith("/api/avatars")) { void avatars.handle(request, response); return; }
   if (request.url === "/health") {
     response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
     response.end(JSON.stringify({ status: "ok" }));
@@ -501,9 +567,12 @@ const server = createServer((request, response) => {
   response.writeHead(404).end();
 });
 const wss = new WebSocketServer({ noServer: true, maxPayload: INPUT_FRAME_BYTES });
+const sessions = new Set<BrowserSession>();
+let shuttingDown = false;
 
 server.on("upgrade", (request, socket, head) => {
-  if (request.url !== "/ws" || !isAllowedOrigin(request)) {
+  const url = new URL(request.url??"/","http://localhost");
+  if (shuttingDown || url.pathname !== "/ws" || !isAllowedOrigin(request)) {
     socket.write("HTTP/1.1 403 Forbidden\r\nConnection: close\r\n\r\n");
     socket.destroy();
     return;
@@ -511,8 +580,11 @@ server.on("upgrade", (request, socket, head) => {
   wss.handleUpgrade(request, socket, head, (browser) => wss.emit("connection", browser, request));
 });
 
-wss.on("connection", (browser) => {
-  const session = new BrowserSession(browser);
+wss.on("connection", (browser, request) => {
+  const avatarId = new URL(request.url??"/","http://localhost").searchParams.get("avatar")??undefined;
+  const session = new BrowserSession(browser,avatarId);
+  sessions.add(session);
+  browser.once("close",()=>{void session.close().finally(()=>sessions.delete(session));});
   void session.start();
 });
 
@@ -520,9 +592,18 @@ server.listen(PORT, "127.0.0.1", () => {
   console.log(JSON.stringify({ type: "gateway-ready", url: `http://127.0.0.1:${PORT}`, diagnostics_dir: diagnostics.directory }));
 });
 
-function shutdown(): void {
-  wss.clients.forEach((client) => client.close(1001, "server shutdown"));
-  server.close(() => process.exit(0));
+async function shutdown(): Promise<void> {
+  if(shuttingDown)return;
+  shuttingDown=true;
+  await avatars.stop();
+  await Promise.allSettled([...sessions].map(session=>session.close("SERVICE_SHUTDOWN")));
+  wss.clients.forEach(client=>client.terminate());
+  await new Promise<void>(resolveClose=>server.close(()=>resolveClose()));
+  await avatars.dispose();
+  process.exit(0);
 }
-process.once("SIGINT", shutdown);
-process.once("SIGTERM", shutdown);
+process.once("SIGINT", () => void shutdown());
+process.once("SIGTERM", () => void shutdown());
+process.on("message", message => {
+  if(message&&typeof message==="object"&&"type" in message&&message.type==="shutdown")void shutdown();
+});
