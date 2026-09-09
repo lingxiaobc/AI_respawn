@@ -13,10 +13,15 @@ export type BrowserControl =
   | { type: "ptt.commit" }
   | { type: "playback.done" }
   | { type: "session.close" }
+  | { type: "session.active" }
+  | { type: "session.continue" }
   | { type: "client.diagnostic"; code: string; message?: string };
 
 export interface GatewayMessage {
-  type: "state" | "turn" | "error";
+  type: "state" | "turn" | "error" | "prepared" | "clock";
+  elapsedSeconds?: number;
+  idleRemaining?: number;
+  maxRemaining?: number;
   state?: GatewayState;
   event?: "asr.completed" | "audio.done" | "response.done";
   round?: number;
@@ -25,7 +30,7 @@ export interface GatewayMessage {
   message?: string;
 }
 
-const CONTROL_TYPES = new Set(["ptt.start", "ptt.commit", "playback.done", "session.close", "client.diagnostic"]);
+const CONTROL_TYPES = new Set(["ptt.start", "ptt.commit", "playback.done", "session.close", "session.active", "session.continue", "client.diagnostic"]);
 
 export function parseBrowserControl(raw: string): BrowserControl {
   const value: unknown = JSON.parse(raw);

@@ -8,6 +8,8 @@ export class AvatarPlayer {
   #timer: ReturnType<typeof setTimeout> | undefined;
   #inputEnded = false;
   #completed = false;
+  #failed = false;
+  #loadTimer: ReturnType<typeof setTimeout> | undefined;
   ready = false;
   readonly frame: HTMLIFrameElement;
   readonly onEvent: (event: AvatarEvent, message?: string) => void;
@@ -17,15 +19,24 @@ export class AvatarPlayer {
   ) {
     this.frame = frame; this.onEvent = onEvent;
     window.addEventListener("message", this.#receive);
+    this.#loadTimer=setTimeout(()=>{
+      this.#failed=true;this.stop();this.ready=false;
+      this.onEvent("error","人物加载超时");
+    },20_000);
   }
   #receive = (event: MessageEvent) => {
     if (event.origin !== location.origin || event.source !== this.frame.contentWindow || event.data?.source !== "dh-live") return;
     const data = event.data;
-    if (data.type === "ready") { this.ready = true; this.onEvent("ready"); return; }
+    if (data.type === "ready") {
+      if(this.#failed)return;
+      clearTimeout(this.#loadTimer);this.ready = true; this.onEvent("ready"); return;
+    }
     if (data.type === "error") {
-      const ended = this.#inputEnded;
+      if(this.#failed)return;
+      clearTimeout(this.#loadTimer);this.#failed=true;
+      const ended = this.#inputEnded && !this.#completed;
       this.ready = false; this.stop(); this.onEvent("error", data.message);
-      if (ended) this.onEvent("done");
+      if (ended) { this.#completed=true;this.onEvent("done"); }
       return;
     }
     if (data.round !== this.#round) return;
@@ -50,8 +61,9 @@ export class AvatarPlayer {
   }
   push(bytes: ArrayBuffer): void { if (this.ready) this.#audio(this.#chunks.push(bytes)); }
   finish(): void {
+    if(this.#inputEnded)return;
     this.#inputEnded = true;
-    if (!this.ready) { this.onEvent("done"); return; }
+    if (!this.ready) { this.#completed=true;this.onEvent("done"); return; }
     this.#audio(this.#chunks.finish()); this.#send("end");
     this.#timer = setTimeout(() => {
       this.stop(); this.ready = false;
@@ -62,5 +74,5 @@ export class AvatarPlayer {
   stop(): void {
     clearTimeout(this.#timer); this.#inputEnded = false; this.#chunks.reset(); this.#round++; this.#send("stop");
   }
-  dispose(): void { this.stop(); window.removeEventListener("message", this.#receive); }
+  dispose(): void { clearTimeout(this.#loadTimer);this.stop(); window.removeEventListener("message", this.#receive); }
 }

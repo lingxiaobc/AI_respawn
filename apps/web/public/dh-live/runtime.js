@@ -28,8 +28,9 @@ function fail(error) {
   console.error("DH_live runtime:", error);
   document.getElementById("loadingSpinner").style.display = "none";
   document.getElementById("startMessage").style.display = "block";
-  document.getElementById("startMessage").textContent = "人物加载或播放失败：" + String(error?.message || error);
-  output("error", { message: String(error?.message || error).slice(0, 200) });
+  const message = error?.message || (typeof error === "string" ? error : "人物资源加载失败，请检查资源或重新制作人物");
+  document.getElementById("startMessage").textContent = "人物加载或播放失败：" + message;
+  output("error", { message: String(message).slice(0, 200) });
 }
 window.addEventListener("error", event => fail(event.error || event.message));
 window.addEventListener("unhandledrejection", event => fail(event.reason));

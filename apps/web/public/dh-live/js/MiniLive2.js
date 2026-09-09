@@ -627,6 +627,13 @@ async function prepareFaceLayers() {
         c.width = canvas_video.width; c.height = canvas_video.height;
     }
     bodyBaseCtx.drawImage(videoProcessor.video, 0, 0);
+    if (window.PHOTO) {
+        const m = window.PHOTO.mouth;
+        const context = mouthMask.getContext('2d');
+        context.save(); context.translate(m.x, m.y); context.rotate(m.angle);
+        ellipseMask(context, 0, 0, m.rx, m.ry); context.restore();
+        return;
+    }
     ellipseMask(mouthMask.getContext('2d'), 350, 451, 78, 68);
     // A real closed-eye image from the same bundled actor is aligned to the neutral face.
     // Only two small eyelid patches are retained; its head/neck pixels are never displayed.
@@ -655,7 +662,8 @@ function compositeFace() {
     // Preserve the original WASM-rendered MatesX attribution as a fixed part of the base.
     // The face mask must not hide it; copying once keeps the neck completely still.
     if (!attributionCaptured) {
-        bodyBaseCtx.drawImage(canvas_video, 350, 520, 80, 25, 350, 520, 80, 25);
+        if (window.PHOTO) bodyBaseCtx.drawImage(canvas_video, 0, 0);
+        else bodyBaseCtx.drawImage(canvas_video, 350, 520, 80, 25, 350, 520, 80, 25);
         attributionCaptured = true;
     }
     faceLayerCtx.clearRect(0, 0, faceLayer.width, faceLayer.height);
@@ -665,6 +673,7 @@ function compositeFace() {
     faceLayerCtx.globalCompositeOperation = 'source-over';
     ctx_video.clearRect(0, 0, canvas_video.width, canvas_video.height);
     ctx_video.drawImage(bodyBase, 0, 0); ctx_video.drawImage(faceLayer, 0, 0);
+    if (window.PHOTO) return;
     const phase = (performance.now() - blinkEpoch + 2400) % 4700;
     let blink = phase < 85 ? phase / 85 : phase < 120 ? 1 : phase < 270 ? 1 - (phase - 120) / 150 : 0;
     blink = blink * blink * (3 - 2 * blink);
@@ -672,6 +681,11 @@ function compositeFace() {
 }
 
 async function newVideoTask() {
+    if (window.PHOTO) {
+        CONFIG.videoSrc = window.PHOTO.video;
+        CONFIG.dataSrc = window.PHOTO.data;
+        CONFIG.chromaKeyEnabled = false;
+    }
     await videoProcessor.init(CONFIG.videoSrc, CONFIG.dataSrc);
     await loadCombinedData();
     await prepareFaceLayers();

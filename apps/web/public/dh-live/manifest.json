@@ -43,8 +43,8 @@
     },
     {
       "path": "js/MiniLive2.js",
-      "bytes": 34550,
-      "sha256": "8fdf87bd238ea965417fbed77df7bef0dc020e827003ffeb247ebf145591a519"
+      "bytes": 34216,
+      "sha256": "778e493610191864d01890dddfdd01318e8d4d2d9332b4258ddb29a184a2c2ee"
     },
     {
       "path": "js/pako.min.js",
@@ -53,13 +53,13 @@
     },
     {
       "path": "js/qt-loader.js",
-      "bytes": 6971,
-      "sha256": "945ff84b04c2eea42a60f64e59888373d681193b3d7f7d3a9d3a9954399c147b"
+      "bytes": 6970,
+      "sha256": "05b69e55612e0390a5c7f08b5bcadd41a8d2e4500ed479cae9c3e4c9c1da4126"
     },
     {
       "path": "runtime.js",
-      "bytes": 4876,
-      "sha256": "34c16f8a85e1a4943e68a9ea7c2d9415e93165ff98a236019b239332d24a19c5"
+      "bytes": 4977,
+      "sha256": "ae7eb8473e4293a8ebff01e7d07489756f38b61aabef028105fee4a902e68412"
     }
   ]
 }
