@@ -31,7 +31,7 @@ test("slow preparation resets heartbeat; upstream disconnect and shutdown releas
   const server=spawn(process.execPath,["--experimental-strip-types",resolve("apps/server/src/server.ts")],{
     cwd:root,windowsHide:true,stdio:["ignore","pipe","pipe","ipc"],
     env:{...process.env,PORT:String(port),AVATAR_STORAGE_DIR:join(root,"artifacts/avatars"),DIAGNOSTICS_DIR:join(root,"logs"),
-      DOUBAO_API_KEY:"test-only",DOUBAO_WS_URL:`ws://127.0.0.1:${(mock.address() as {port:number}).port}`}
+      ADMIN_INITIAL_PASSWORD:"Initial-test-pass",DOUBAO_API_KEY:"test-only",DOUBAO_WS_URL:`ws://127.0.0.1:${(mock.address() as {port:number}).port}`}
   });
   server.stderr?.resume();
   const browserSockets:WebSocket[]=[];
@@ -46,8 +46,10 @@ test("slow preparation resets heartbeat; upstream disconnect and shutdown releas
     server.stdout?.on("data",data=>{if(String(data).includes("gateway-ready"))done();});
     server.once("error",reject);server.once("exit",code=>reject(Error(`Gateway exited ${code}`)));
   });
+  const login=await fetch(`http://127.0.0.1:${port}/api/auth/login`,{method:"POST",headers:{origin:"http://127.0.0.1:5173","x-account-request":"1","content-type":"application/json"},body:JSON.stringify({username:"lenox",password:"Initial-test-pass"})});
+  assert.equal(login.status,200);const cookie=login.headers.get("set-cookie")!.split(";")[0]!;
   async function connect(avatarId:string){
-    const ws=new WebSocket(`ws://127.0.0.1:${port}/ws?avatar=${avatarId}`,{origin:"http://127.0.0.1:5173"});browserSockets.push(ws);
+    const ws=new WebSocket(`ws://127.0.0.1:${port}/ws?avatar=${avatarId}`,{origin:"http://127.0.0.1:5173",headers:{cookie}});browserSockets.push(ws);
     const errors:string[]=[];ws.on("message",data=>{const m=JSON.parse(data.toString());if(m.type==="error")errors.push(m.code);});
     await new Promise<void>((done,reject)=>{
       ws.on("message",data=>{const m=JSON.parse(data.toString());if(m.type==="state"&&m.state==="ready")done();if(m.type==="error")reject(Error(m.code));});
@@ -60,7 +62,7 @@ test("slow preparation resets heartbeat; upstream disconnect and shutdown releas
   assert.equal(first.ws.readyState,WebSocket.OPEN);assert.deepEqual(first.errors,[]);
   const closed=new Promise<void>(r=>first.ws.once("close",()=>r()));upstream!.terminate();await closed;
   assert.deepEqual(first.errors,["UPSTREAM_DISCONNECTED"]);
-  assert.equal((await(await fetch(`http://127.0.0.1:${port}/api/avatars`)).json()).callActive,false);
+  assert.equal((await(await fetch(`http://127.0.0.1:${port}/api/avatars`,{headers:{cookie}})).json()).callActive,false);
   const second=await connect(roleIds[1]!);await delay(100);
   assert.ok(instructions[1]?.includes("老师"));assert.ok(!instructions[1]?.includes("同学"));
   const exited=new Promise<void>(r=>server.once("exit",()=>r()));server.send({type:"shutdown"});await exited;

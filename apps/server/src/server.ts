@@ -12,7 +12,10 @@ import {
   type GatewayState,
 } from "../../../packages/protocol/src/browser.ts";
 import { loadLocalEnv } from "../../../scripts/env.ts";
-import { AvatarService } from "./avatar-service.ts";
+import { AvatarService, isLocalRequest } from "./avatar-service.ts";
+import { AuthService, requireMutation, json } from "./auth-service.ts";
+import { AuthError, type Identity } from "./auth-store.ts";
+import { backupBeforeAccounts } from "./account-migration.ts";
 import { ZenMuxPortraitStandardizer } from "./portrait-standardizer.ts";
 import { roleInstructions } from "./role-instructions.ts";
 import { CallClock } from "../../../packages/protocol/src/call-clock.ts";
@@ -35,6 +38,8 @@ function isAllowedOrigin(request: IncomingMessage): boolean {
 }
 
 class BrowserSession {
+  readonly #identity: Identity;
+  #unregister?: () => void;
   #closingTask?: Promise<void>;
   #abort = new AbortController();
   #clock = new CallClock();
@@ -80,19 +85,20 @@ class BrowserSession {
   #providerErrorParam?: string;
   #providerMessage?: string;
 
-  constructor(browser: WebSocket, avatarId?: string) {
+  constructor(browser: WebSocket, avatarId: string, identity: Identity) {
+    this.#identity = identity;
     this.#avatarId = avatarId;
     this.#browser = browser;
-    const identity = createIdentity();
-    this.#sessionId = identity.sessionId;
-    this.#diagnosticId = identity.diagnosticId;
+    const callIdentity = createIdentity();
+    this.#sessionId = callIdentity.sessionId;
+    this.#diagnosticId = callIdentity.diagnosticId;
     this.#provider = new DoubaoRealtimeClient({
       apiKey: apiKey!,
       url: process.env.DOUBAO_WS_URL,
       session: {
         model: process.env.DOUBAO_MODEL,
         voice: process.env.DOUBAO_VOICE,
-        instructions: roleInstructions(avatarId?avatars.store.active(avatarId):null,
+        instructions: roleInstructions(auth.store.role(identity, avatars.store.active(avatarId)),
           process.env.DOUBAO_INSTRUCTIONS ?? "你是一位温和、简洁的中文语音助手。每次回答不超过两句话。"),
       },
       timeoutMs: 45_000,
@@ -124,17 +130,32 @@ class BrowserSession {
     });
     browser.once("error", () => void this.close());
     browser.on("pong", () => { this.#lastPong = performance.now(); });
+    this.#unregister = auth.register({ identity, avatarId, close: () => this.revoke() });
+  }
+
+  revoke(): Promise<void> {
+    if (!this.#closed) this.#sendJson({type:"error",state:"error",code:"AUTH_REVOKED",message:"登录或人物授权已失效，本次通话已结束。"});
+    return this.close("AUTH_REVOKED");
+  }
+  #authorized() {
+    if (this.#closed) return false;
+    if (auth.canCall(this.#identity, this.#avatarId!)) return true;
+    void this.revoke(); return false;
   }
 
   async start(): Promise<void> {
+    if (!this.#authorized()) return;
     this.#sendJson({ type: "state", state: "connecting" });
     try {
       this.#prepareTimer = setTimeout(() => this.#fail("PREPARATION_TIMEOUT", "通话准备超时，请重新呼叫"),60_000);
       await avatars.acquireCall(this.#avatarId,this.#sessionId,this.#abort.signal);
-      if(this.#closed)return;
+      if(!this.#authorized())return;
+      avatars.store.db.prepare("UPDATE calls SET user_id=?,auth_session_id=?,purpose=?,profile_revision=? WHERE id=?")
+        .run(this.#identity.user.id,this.#identity.sessionId,this.#identity.user.user_type==="ADMIN"?"ADMIN_PREVIEW":"USER_CALL",
+          String(auth.store.assignment(this.#identity.user.id,this.#avatarId!)?.revision??0),this.#sessionId);
       this.#sendJson({type:"prepared"});
       await this.#provider.connect();
-      if(this.#closed)return;
+      if(!this.#authorized())return;
       this.#transition("ready");
       this.#lastPong=performance.now();
       this.#tick = setInterval(() => {
@@ -166,6 +187,7 @@ class BrowserSession {
     if (!["closing", "closed"].includes(this.#state)) this.#transition("closing");
     await this.#provider.close().catch(() => undefined);
     avatars.releaseCall(this.#sessionId,this.#endReason,this.#totalInput,this.#totalOutput);
+    this.#unregister?.(); this.#unregister = undefined;
     if (this.#phaseTimer) clearTimeout(this.#phaseTimer);
     this.#state = "closed";
     this.#sendJson({ type: "state", state: "closed" });
@@ -195,6 +217,7 @@ class BrowserSession {
   }
 
   #onBrowserMessage(data: Buffer | ArrayBuffer | Buffer[], isBinary: boolean): void {
+    if (!this.#authorized()) return;
     try {
       if (isBinary) {
         const pcm = Buffer.isBuffer(data) ? data : Buffer.from(data as ArrayBuffer);
@@ -288,7 +311,7 @@ class BrowserSession {
 
   #onProviderEvent(event: ServerEvent): void {
     avatars.store.recordUsage(this.#sessionId,event);
-    if(this.#closed)return;
+    if(!this.#authorized())return;
     if (typeof event.event_id === "string") this.#lastProviderEventId = event.event_id;
     this.#providerEventCount += 1;
     const summary = safeEventSummary(event);
@@ -341,6 +364,7 @@ class BrowserSession {
   }
 
   #onProviderAudio(raw: Event): void {
+    if (!this.#authorized()) return;
     if (this.#closed || ["error", "closing", "closed"].includes(this.#state)) return;
     if (this.#state === "thinking") this.#transition("speaking");
     const pcm = Buffer.from((raw as CustomEvent<Uint8Array>).detail);
@@ -555,10 +579,33 @@ class BrowserSession {
   }
 }
 
-const avatars = new AvatarService(resolve(process.env.AVATAR_STORAGE_DIR ?? "artifacts/avatars"),undefined,new ZenMuxPortraitStandardizer());
+const avatarRoot = resolve(process.env.AVATAR_STORAGE_DIR ?? "artifacts/avatars");
+await backupBeforeAccounts(avatarRoot);
+const avatars = new AvatarService(avatarRoot,undefined,new ZenMuxPortraitStandardizer());
 await avatars.initialized;
+const auth = new AuthService(avatars.store);
+await auth.store.initialize(process.env.ADMIN_INITIAL_PASSWORD, process.env.AUTH_ALLOW_LOCAL_TEST_PASSWORD === "1" && process.env.NODE_ENV !== "production");
+delete process.env.ADMIN_INITIAL_PASSWORD;
+const authTimer = setInterval(() => { void auth.sweep().catch(() => undefined); }, 1000);
+const authPruneTimer = setInterval(() => auth.store.prune(), 60 * 60_000);
 const server = createServer((request, response) => {
-  if (request.url?.startsWith("/api/avatars")) { void avatars.handle(request, response); return; }
+  if (request.url?.startsWith("/api/")) {
+    try {
+      if (!isLocalRequest(request)) throw new AuthError(403,"仅允许本机页面访问");
+      if (request.url.startsWith("/api/auth/") || request.url.startsWith("/api/admin/") || request.url === "/api/me") {
+        void auth.handle(request,response); return;
+      }
+      const identity = auth.require(request);
+      if (!["GET","HEAD"].includes(request.method??"")) requireMutation(request);
+      if (request.url.startsWith("/api/avatars")) {
+        void avatars.handle(request,response,{
+          admin:identity.user.user_type==="ADMIN",
+          check:()=>{if(!auth.store.valid(identity))throw new AuthError(401,"登录已失效，请重新登录");},
+          role:avatar=>auth.store.role(identity,avatar),
+        }); return;
+      }
+    } catch(error) {json(response,error instanceof AuthError?error.status:500,{message:error instanceof AuthError?error.message:"服务异常"});return;}
+  }
   if (request.url === "/health") {
     response.writeHead(200, { "content-type": "application/json", "cache-control": "no-store" });
     response.end(JSON.stringify({ status: "ok" }));
@@ -577,12 +624,19 @@ server.on("upgrade", (request, socket, head) => {
     socket.destroy();
     return;
   }
+  const identity = auth.identity(request), avatarId = url.searchParams.get("avatar");
+  if (!identity || !avatarId || !auth.canCall(identity,avatarId)) {
+    socket.write(`HTTP/1.1 ${identity?403:401} ${identity?"Forbidden":"Unauthorized"}\r\nConnection: close\r\n\r\n`);
+    socket.destroy(); return;
+  }
   wss.handleUpgrade(request, socket, head, (browser) => wss.emit("connection", browser, request));
 });
 
 wss.on("connection", (browser, request) => {
   const avatarId = new URL(request.url??"/","http://localhost").searchParams.get("avatar")??undefined;
-  const session = new BrowserSession(browser,avatarId);
+  const identity = auth.identity(request);
+  if (!identity || !avatarId || !auth.canCall(identity,avatarId)) { browser.close(1008,"Unauthorized"); return; }
+  const session = new BrowserSession(browser,avatarId,identity);
   sessions.add(session);
   browser.once("close",()=>{void session.close().finally(()=>sessions.delete(session));});
   void session.start();
@@ -595,6 +649,7 @@ server.listen(PORT, "127.0.0.1", () => {
 async function shutdown(): Promise<void> {
   if(shuttingDown)return;
   shuttingDown=true;
+  clearInterval(authTimer);clearInterval(authPruneTimer);
   await avatars.stop();
   await Promise.allSettled([...sessions].map(session=>session.close("SERVICE_SHUTDOWN")));
   wss.clients.forEach(client=>client.terminate());

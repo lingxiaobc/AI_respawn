@@ -1,0 +1,481 @@
+{
+  "recordedBeforeImplementation": true,
+  "files": [
+    {
+      "path": "apps/server/src/account-migration.ts",
+      "hash": "59607F02005DDBBCF05E04EAA55440D791AC34D952DAB4BF48D4DA8CD8AEF347"
+    },
+    {
+      "path": "apps/server/src/auth-service.ts",
+      "hash": "0D566A174303060152735F980A5D3D1ADF025E202DB82D98FE57EF11E4215E79"
+    },
+    {
+      "path": "apps/server/src/auth-store.ts",
+      "hash": "72DEC4047F83DA9B880E810A3E92D701800BC9CA62D1BF8843F4B7324ACCD1DC"
+    },
+    {
+      "path": "apps/server/src/storage-safety.ts",
+      "hash": "9AA7D5BDA523ADEA05A9AAA158AB624700A4EF6130C569133CE47842DCBDE885"
+    },
+    {
+      "path": "apps/web/src/Accounts.tsx",
+      "hash": "7DFE93434263EEA1AD938930316EDF51BA3F4A8D114AC2500504CEDB8D57CC00"
+    },
+    {
+      "path": "apps/web/src/account-api.ts",
+      "hash": "72DF771F219AECAEE0A497C723E15FD4B4C0026CA532888A96A84B7B15930234"
+    },
+    {
+      "path": "docs/ACCOUNTS.md",
+      "hash": "478A03C7D43FE1F69E943D1670EF884D5E8FFBEE8D1EA5E86168D0ECEA1DF3FE"
+    },
+    {
+      "path": "packages/avatar/account-fixture.ts",
+      "hash": "E5286662CF8EA6D4CD20FF416B3D98B6357C701CDDC3AC20FF627BA7B03771F4"
+    },
+    {
+      "path": "packages/avatar/account-gateway.test.ts",
+      "hash": "9086FBFC6B4B278FDB70FDC3875083F0E952A8B2E27D7863A105FB02EF519764"
+    },
+    {
+      "path": "packages/avatar/account-safety.test.ts",
+      "hash": "0D9085C7A199EE2ACD275741E90EBD04F2A97E441CC8D5B2E1938B67FD2E860C"
+    },
+    {
+      "path": "packages/avatar/auth-service.test.ts",
+      "hash": "CC068F6AA46A9AE4C2F80D487DE577A3B5F9010016F75BE8F301433CEA942951"
+    },
+    {
+      "path": "packages/avatar/auth-store.test.ts",
+      "hash": "09C60E56824DDEEDF902D1651EE74F13526A90CC37F95A644486CFC94CA2D99E"
+    },
+    {
+      "path": "scripts/account-admin.ts",
+      "hash": "573C6A561BC751B9C66091DB90F5C4AB7081CBC9716AAE96A68E370A8018CEB1"
+    },
+    {
+      "path": "scripts/account-session.ts",
+      "hash": "A8B6A270F373D16863294D60B69F8CAE7AAFC9626D972C4B3EF54C7C74C61B5C"
+    },
+    {
+      "path": "scripts/verify-accounts-browser.ts",
+      "hash": "4C2EA58C18BE838EFC90B6C22190D66BF402BA6F4A9CD70C692C0849FDAE57FE"
+    },
+    {
+      "path": ".env.example",
+      "hash": "FDC47DF145FE4A83BF74D00F70274416D698261CA8FB7FF34BAF778E8C1A4D0C"
+    },
+    {
+      "path": "README.md",
+      "hash": "124262848AE8C212D7D3568EB1E7FDF243025AB619B14CD7379FEBAFEB9811A2"
+    },
+    {
+      "path": "apps/server/src/avatar-service.ts",
+      "hash": "D4ADA42C767389C92AED8EF127054EC78893B49C674CA293BBFB9608962A0CF4"
+    },
+    {
+      "path": "apps/server/src/avatar-store.ts",
+      "hash": "4452DAC24855AA4CFA0878B41DA3231CCD15B0E7E0A03B14D94183388F245C54"
+    },
+    {
+      "path": "apps/server/src/avatar-worker.ts",
+      "hash": "024240BC0EFFB3AFD9CD3A344897E2EFAB507131A6909292D6D2CD62FB5CBD5A"
+    },
+    {
+      "path": "apps/server/src/portrait-standardizer.ts",
+      "hash": "41BF99293A6A8188D1E5526664B6070D2CE6805CA046E009CACFBC9613037CDE"
+    },
+    {
+      "path": "apps/server/src/role-instructions.ts",
+      "hash": "74E5F2F9855B4576AF4B6360242E5C56A63C715C93028D15C3EADE78B52258E4"
+    },
+    {
+      "path": "apps/server/src/server.ts",
+      "hash": "EF16783EC5CCFF13AA7B85D855F2931FB7449BEBB909F1868C88E658083D2A3B"
+    },
+    {
+      "path": "apps/web/index.html",
+      "hash": "249C1C3DDC998BBA4FA4E706478842521820DCD0E7847F0FCFEBA1BA71F34E05"
+    },
+    {
+      "path": "apps/web/public/capture-worklet.js",
+      "hash": "B4424E2173912371D1B3E7BFC5D5B21524C6CB18BD29C0969981B644440EB1E4"
+    },
+    {
+      "path": "apps/web/public/dh-live/DHLiveMini.wasm",
+      "hash": "7199459B6599A14190AA603D1859F9303FDA004E4B78D3206907356D38094783"
+    },
+    {
+      "path": "apps/web/public/dh-live/PROVENANCE.md",
+      "hash": "D9FB57D13A60446663806677ADBB07F4000F5AF3E39E9B815057F2BCC3B57C4C"
+    },
+    {
+      "path": "apps/web/public/dh-live/assets/01.mp4",
+      "hash": "B70C76468C3383A4E9F2AFEED1F73568DE52DAD17C02D9CBAA64608C05D77934"
+    },
+    {
+      "path": "apps/web/public/dh-live/assets/combined_data.json.gz",
+      "hash": "6C12FBD0AC5BF9F7F5F43100BB7CAA5F4CFB5E37C86232F2F977B5397588561D"
+    },
+    {
+      "path": "apps/web/public/dh-live/common/bs_texture_halfFace.png",
+      "hash": "37C5B168B3B2745219CC8BD158F6052F7AE8DD1013DC9F9E5E86649D7B03A8FB"
+    },
+    {
+      "path": "apps/web/public/dh-live/common/input.wav",
+      "hash": "B17C434D4014DEC86D4FFF279F2CB99DCBCF50709D6911544D88440706B50523"
+    },
+    {
+      "path": "apps/web/public/dh-live/common/test.wav",
+      "hash": "95B35BE629C2224A5CDFD1D315E6ED3B94BB7171913ED53AE77F83A813180D13"
+    },
+    {
+      "path": "apps/web/public/dh-live/frame.html",
+      "hash": "D42A49572B096F4EE1E0D2ACF25A4CDEB2BED6F3F01FE000948FFE5879E0BD09"
+    },
+    {
+      "path": "apps/web/public/dh-live/js/DHLiveMini.js",
+      "hash": "47EA7396B9C5477AC6C26F6FC97C8590B6FAD6AE69DAF38D160B64FEEDDBCAE8"
+    },
+    {
+      "path": "apps/web/public/dh-live/js/MiniLive2.js",
+      "hash": "13B38799C350E62966450DE202B33BC472093929820DA12320AB0589210FC09F"
+    },
+    {
+      "path": "apps/web/public/dh-live/js/pako.min.js",
+      "hash": "7B7A3B8DB4D7B65846B807F1309688A8955961DBDE5538694862A6C5CBC932CF"
+    },
+    {
+      "path": "apps/web/public/dh-live/js/qt-loader.js",
+      "hash": "91B0138BFE99343DB624BC7B9C598D45693800FC5F288B8C8268989F67A4EB33"
+    },
+    {
+      "path": "apps/web/public/dh-live/manifest.json",
+      "hash": "48D3696B297B00ABE8B329DF20DF812927D080BCC2466F2EDAB8FC53BF8E9BB4"
+    },
+    {
+      "path": "apps/web/public/dh-live/runtime.js",
+      "hash": "975C69A397C35174B9EE32E26DD4F217050EEC01CC1E98E8F708818A0A771771"
+    },
+    {
+      "path": "apps/web/public/dh-live/upstream-README.md",
+      "hash": "5F408BF047B120E4ADCA5B246B996EC177C399F64A97881EF3795B7435B3F6C2"
+    },
+    {
+      "path": "apps/web/src/App.tsx",
+      "hash": "CE666B45D6350F05FBE781092678718444E6066CA334C66B0AB5D88268066137"
+    },
+    {
+      "path": "apps/web/src/AvatarTest.tsx",
+      "hash": "55F789515648EDCE14DE60272384C5610DF25AB4F7E1E1A15F24EC4EFB8BF34D"
+    },
+    {
+      "path": "apps/web/src/CallRoom.tsx",
+      "hash": "D6308ED02665D3086B29CD6291DB6CA89D59FD3D9234E82D23C37CC93440C9D9"
+    },
+    {
+      "path": "apps/web/src/PhotoUpload.tsx",
+      "hash": "5C2B264A47C87AF75F50FA6681310730C6A9FBFF99FCED0F95EACF00B51F9E9A"
+    },
+    {
+      "path": "apps/web/src/avatar-player.ts",
+      "hash": "E363CC5EFE4C4D3E3606D7D62535CAD65E13CE5C877059F62D7B93E748658F69"
+    },
+    {
+      "path": "apps/web/src/main.tsx",
+      "hash": "D35960776E6F41C8417875FA24A068EFB3552737F230C1188EED4817E019EB75"
+    },
+    {
+      "path": "apps/web/src/styles.css",
+      "hash": "4BE3F8D04436BF0EDE7C11D64FA031C9735F3C2E0796BB3AB3D6B68CA9B08DF5"
+    },
+    {
+      "path": "apps/web/src/vite-env.d.ts",
+      "hash": "65996936FBB042915F7B74A200FCDDE7E410F32A669B1AB9597CFAA4B0FADDB5"
+    },
+    {
+      "path": "apps/web/vite.config.ts",
+      "hash": "C2862EF2CBEFC5BE4FFAA6C19021E5DF91E311606035A1093DD9576F460743B0"
+    },
+    {
+      "path": "docs/AI_Avatar_Demo_PRD_Development_V0.2.md",
+      "hash": "353FDEAF4C366C4D1C3A13B2A5F76F6AB5B01C67A990FD04F2DB4FB8A5AEEC73"
+    },
+    {
+      "path": "docs/BATCH_CALL_PHASE.md",
+      "hash": "781C4B0D5A899FD93141217704CE999EFE9E29FF4CF7563795FBE53516EE2082"
+    },
+    {
+      "path": "docs/BATCH_CALL_VERIFICATION.md",
+      "hash": "5AE2501F3FD066FA4CC6EEB205A4EA6A1444E2B6C55B80C5D604CF5A67DBCA76"
+    },
+    {
+      "path": "docs/DH_LIVE_MINI.md",
+      "hash": "26718E69B3CECE2E18129207C86E865D49384CB179765139385E2A54C12EBC8A"
+    },
+    {
+      "path": "docs/PHOTO_REALTIME_LOCAL.md",
+      "hash": "46D328F3AF8709650489FF11323D8AD882D8A6C40C9BA3EB41CCBAF16EB9CF10"
+    },
+    {
+      "path": "docs/ROLE_MANAGEMENT_NORMALIZATION.md",
+      "hash": "E9D806DEC2C4591811F6FBD6927DF39DA900FD56FD4CB17A8AFBC3D19771E3B8"
+    },
+    {
+      "path": "docs/acceptance-report.md",
+      "hash": "66538CE9A3BFA13644A7DF48D797553DAC7EFB84C6B4ED80CF00A6C2728A8213"
+    },
+    {
+      "path": "docs/architecture.md",
+      "hash": "74348E63C68A2FF4974C9FFF0883EB7AC3185B07783C1A49FBCB869C3D046A95"
+    },
+    {
+      "path": "docs/provider-contract.md",
+      "hash": "B1AA4A57419E6DAF0C263CD4DD4F31A09346A56C14D84398AA98E7FA9357676F"
+    },
+    {
+      "path": "package-lock.json",
+      "hash": "8298983E850E463B77FEBBB47E348E6A7A0EDB697899009D50BB12DF85DC274A"
+    },
+    {
+      "path": "package.json",
+      "hash": "72D2F3F9D735953D3302B492F70A37751924E561D1AD6F167B8B4ECA5B926797"
+    },
+    {
+      "path": "packages/audio/pcm.test.ts",
+      "hash": "20DA3B810FC45DF3CC392D1AB7C46A9E1828441CBBA1399AB99E212272E626F1"
+    },
+    {
+      "path": "packages/audio/playback.test.ts",
+      "hash": "301E631EDA4EFDBE9B5A445FB9DAA7FA0D7588408DACC2EA9F97015E7A3C8CE6"
+    },
+    {
+      "path": "packages/audio/resample.test.ts",
+      "hash": "C49E7180F298D88DAFBA43C8B2A5A7655824293E3FAA09CBD2370DF27DF8D9E2"
+    },
+    {
+      "path": "packages/audio/src/pcm.ts",
+      "hash": "9A42CE9A56B66D5EDBEB015296922573A90E02AC6FCFE56516A471D4D39FE9EB"
+    },
+    {
+      "path": "packages/audio/src/playback.ts",
+      "hash": "C4F8222B230607CAA3AFA5E487BB2D39D7EF4B96AD753B7493D7A7688DCB9682"
+    },
+    {
+      "path": "packages/audio/src/resample.ts",
+      "hash": "F9D168813F1312B243F7F79DC7EC06DFA9EAAE8F3EBB5D809017528273E769CB"
+    },
+    {
+      "path": "packages/audio/src/turn-detector.ts",
+      "hash": "ED0F77F5655D53F34DC0AE309AAB5D9E3F0A364118308B6B17FD317767C6FD91"
+    },
+    {
+      "path": "packages/audio/src/wav.ts",
+      "hash": "5B5D20B0CE1DCA273E3924E3252B8A30FC0C9ECAE1CECFAF0A16977E8A07B7DB"
+    },
+    {
+      "path": "packages/audio/turn-detector.test.ts",
+      "hash": "7FF598B26C6EC620948BB661D3EDBF6C17E709384F2010A665EDA163E5962A46"
+    },
+    {
+      "path": "packages/audio/wav.test.ts",
+      "hash": "ACCF8CF383384D4948F1A2930AF6BCA33C72C88BD387FD8FEE66503BE066D426"
+    },
+    {
+      "path": "packages/avatar/audio.test.ts",
+      "hash": "B9D8FEC2262BD879C2633C75F7F4688B15285A8E739E0FEA9B636FB06D41EB01"
+    },
+    {
+      "path": "packages/avatar/gateway-lifecycle.test.ts",
+      "hash": "70DE1BA9FB666D50FD14C8DC29A326C881D7B5BE6A6B57B7E1A4AF0B96DAC510"
+    },
+    {
+      "path": "packages/avatar/management.test.ts",
+      "hash": "C6B1554384FA40E6F1E2FB576AA45AC6067A754DB88D0895F5C46C6C2B809714"
+    },
+    {
+      "path": "packages/avatar/normalization.test.ts",
+      "hash": "DB75DF1D9E971BF8267ABA448F3B3CE0FD02B4438EA150CF26DB480A62C60DBF"
+    },
+    {
+      "path": "packages/avatar/player.test.ts",
+      "hash": "DA025AC44264B7DCE5800FC35F290FE282A22AB0362A1DAE1C1E9501F5D67494"
+    },
+    {
+      "path": "packages/avatar/queue.test.ts",
+      "hash": "C9BD259844E44434C178F073CF8E2B5D74CDA8D7F5A291F52BE1EA88DD7F7925"
+    },
+    {
+      "path": "packages/avatar/role-instructions.test.ts",
+      "hash": "7410B1A7E7978A2B1460808A38D166ECAF95D676D723760F0B6B6EA90D807CB2"
+    },
+    {
+      "path": "packages/avatar/service.test.ts",
+      "hash": "735CDA405D0A11337829AB995680D74D9DF1020239DA32FC8B21D1EBFAA1FC2A"
+    },
+    {
+      "path": "packages/avatar/src/audio.ts",
+      "hash": "B9E7090FC29B499AD2C99BE38095B6B2055A90872F48847988A68C1CCD6D8BAE"
+    },
+    {
+      "path": "packages/avatar/store.test.ts",
+      "hash": "CCE50CA7A9607CC84452F672B111794CC36A6248224D3D5853633F704A4BE028"
+    },
+    {
+      "path": "packages/diagnostics/diagnostics.test.ts",
+      "hash": "40F57F325FA2D57641691850A519884A474B086D54A4A40AC4139FA5738F351B"
+    },
+    {
+      "path": "packages/diagnostics/src/logger.ts",
+      "hash": "565FE9EADB01F99D71C51FA5888B34302EE83987434DAFA557BF86635FDEE396"
+    },
+    {
+      "path": "packages/diagnostics/src/schema.ts",
+      "hash": "74D49F9CA03150A55CDA83E4E7CF51F6D12037120AFB0D9A19D5D1EE76C6FAA5"
+    },
+    {
+      "path": "packages/protocol/browser.test.ts",
+      "hash": "A6B29E6F6005CDD1012C9968472D22353C40F0338CB0412903D7D92821A560C2"
+    },
+    {
+      "path": "packages/protocol/call-clock.test.ts",
+      "hash": "A49D95BCE28AB2698421D3D469AE11471D9C2F52DCACE80711649C0EFD9641E2"
+    },
+    {
+      "path": "packages/protocol/src/browser.ts",
+      "hash": "9A94F4416F0020C21CF18E9AB0C30D4D15DBB911FD06FD1500FB1BFC8A0B3DD6"
+    },
+    {
+      "path": "packages/protocol/src/call-clock.ts",
+      "hash": "DCD0E9228D83AF7514CA6A411D7481F24D974CEBA5A256CD203C50AC09155D96"
+    },
+    {
+      "path": "packages/provider-doubao/protocol.test.ts",
+      "hash": "16935A356A42E8A66EB3538BBED7A7238469CA22CDD4004A971D43E363BB4E2D"
+    },
+    {
+      "path": "packages/provider-doubao/src/client.ts",
+      "hash": "A9D4E1E64541467C64BC95978B9975B8148B9FE67214ABBB4EACD3BBBF9C0C5A"
+    },
+    {
+      "path": "packages/provider-doubao/src/protocol.ts",
+      "hash": "1541B1CFD6AE46B6F4BA49C5B5BB949AD989CB87C5FBFF36175457825E110202"
+    },
+    {
+      "path": "packages/provider-doubao/src/usage.ts",
+      "hash": "78AA1A24C8FE9148B2CC4B0E760BBD5515CD179DC9780DF6DD5F79547B5C565D"
+    },
+    {
+      "path": "packages/types/pvspeaker-node.d.ts",
+      "hash": "12CB36755BF799D65ECE08AD1257BDC7D37C79A9935BA74F90B0C0F1E76155E7"
+    },
+    {
+      "path": "scripts/avatar-requirements.txt",
+      "hash": "8AD388315C05BADAF2AA67BAA72768330410267209B44E89BB015B0B20AEB9F0"
+    },
+    {
+      "path": "scripts/build-photo-preview.py",
+      "hash": "B4EFDC9CD41DBDAC1B5302CEE7C4C068CA2EE36BDA061B7A4AE01AEDB8C1909E"
+    },
+    {
+      "path": "scripts/build-public-fixture.ts",
+      "hash": "50E3522199B1B6D31F470F1A32B1B75B668713FD715BF88B627A2ED0FE769752"
+    },
+    {
+      "path": "scripts/capture-check.ts",
+      "hash": "3773106C7EA070829BC8A36D83A4F6B0C847CB2D4FB4C051C511EBDBC89BD35D"
+    },
+    {
+      "path": "scripts/dev.ts",
+      "hash": "557E00FAD376213ABA23BC52650D6C3A038D9EC6DFD3F2C443B371ACB2DBAEA4"
+    },
+    {
+      "path": "scripts/devices.ts",
+      "hash": "6B208390CF525BB2D0AAF41BA6D0C76643BCE4728D45AEA0B3730FF26F5684CE"
+    },
+    {
+      "path": "scripts/diagnostics.ts",
+      "hash": "188F4F319EFC5CBFA5EA2B662895B2A1E156F4BD8D0C439E3DEBABC211957E14"
+    },
+    {
+      "path": "scripts/env.ts",
+      "hash": "4A09B20373444957A9FE5170197E4E0757374E4A1C887200DE843FA88F9C8131"
+    },
+    {
+      "path": "scripts/gateway-probe.ts",
+      "hash": "CD424D9DF3961EA3509FEC145D9C49121AB924A598EC88CE90049E279391104D"
+    },
+    {
+      "path": "scripts/inspect-fixture.ts",
+      "hash": "E6B30289733D58BC96190B13348326027D4A24621F69E90507CB671894DD52D2"
+    },
+    {
+      "path": "scripts/inspect-output.ts",
+      "hash": "01B710B9890A2B9C0860021EF4CB6CCAA068A8164B77970D91C4C7883928E2C2"
+    },
+    {
+      "path": "scripts/install-verified-roles.ts",
+      "hash": "649C142ECEB200EC35B279B7055F43B9860850E04A6D41071B3F35EF3735B4D1"
+    },
+    {
+      "path": "scripts/prepare-avatar.py",
+      "hash": "3FEF5FD3D3C95F47797FC2AD8F4573BDBC26C31C6A21F78CAE171B2066200019"
+    },
+    {
+      "path": "scripts/prepare-photo-test.py",
+      "hash": "B11BE6C7552A7AF7705EBE8CB07231F42FF8F97689DC51199DD7AED3F6E0F047"
+    },
+    {
+      "path": "scripts/probe.ts",
+      "hash": "A93A0B559847C0687D95C6B9010DE7251C11184ECC0446A512B9539069CBC94E"
+    },
+    {
+      "path": "scripts/ptt.ts",
+      "hash": "3039FF803C60FF94A2B732DC19C8FF6489A9ED4CE88C27204787A489DC9F77C4"
+    },
+    {
+      "path": "scripts/setup-avatar.ps1",
+      "hash": "CC61AB6BD93857C2E87F157C167C4BF2A27F61D23E13C189D1DC552D578C1E4B"
+    },
+    {
+      "path": "scripts/space-key-events.ps1",
+      "hash": "DA65B23D2755C8ADC23A6C26452ADEDDCF9DF43C53F1CD65B71F41C84718A70B"
+    },
+    {
+      "path": "scripts/validate-portrait.py",
+      "hash": "F67BD4D8EDE5A96C737905F11FFA7ECF9548C6557BA06C884887DF0D1FCE1711"
+    },
+    {
+      "path": "scripts/verify-avatar.ts",
+      "hash": "18768BEC451D81761EE5DF06FAF8CD6D77D6268249C088E1FBDE3FF829094C21"
+    },
+    {
+      "path": "scripts/verify-batch-scheduler.ts",
+      "hash": "104F4913A2BA53D8BF6A3A1E40FD082654E9EC7ADE1B8B0A776E9C290EA9FCD1"
+    },
+    {
+      "path": "scripts/verify-call-lifecycle.ts",
+      "hash": "9F2B45212ADF2DF955AB5EBF8F77A0B1881F8F6AB979E7B403E6B35722232DB1"
+    },
+    {
+      "path": "scripts/verify-call-performance.ts",
+      "hash": "B30FBD5F5F5DB1CE25F6C5EA5F661DD59D5A11241E436704C12D44E71662B37B"
+    },
+    {
+      "path": "scripts/verify-portrait-models.ts",
+      "hash": "102FFC437D9DC3E96649522BF0F9335B148EA3AA47357A1A86A33B887B15C13E"
+    },
+    {
+      "path": "scripts/verify-portrait-validation.ts",
+      "hash": "4148FEF22FACCFFCD60012B6A7459410AA34AB7D47FF7D10E8111AC00B045638"
+    },
+    {
+      "path": "scripts/verify-role-flow.ts",
+      "hash": "10EFA3DB9F7E99E1A5618B7DCDDB45957FCE1E8B4CA92A9EAD4C9A40CE7153FF"
+    },
+    {
+      "path": "scripts/verify-worker-crash.ts",
+      "hash": "EAB2582128348B1365AF8DFE19B6FC0D0281C404E2785052A0CD37BA501CA31D"
+    }
+  ]
+}

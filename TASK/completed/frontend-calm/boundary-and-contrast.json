@@ -1,0 +1,60 @@
+{
+  "protectedMatches": true,
+  "changedSourcePaths": [
+    "scripts/verify-frontend-design.ts",
+    "apps/web/src/styles.css"
+  ],
+  "contrast": [
+    {
+      "role": "body",
+      "foreground": "eef1e9",
+      "background": "101916",
+      "ratio": 15.685736124533083,
+      "minimum": 4.5
+    },
+    {
+      "role": "muted",
+      "foreground": "abb9af",
+      "background": "17221d",
+      "ratio": 8.020518164517304,
+      "minimum": 4.5
+    },
+    {
+      "role": "button",
+      "foreground": "14281c",
+      "background": "aed3b5",
+      "ratio": 9.469927539496329,
+      "minimum": 4.5
+    },
+    {
+      "role": "input boundary",
+      "foreground": "6f8576",
+      "background": "101a14",
+      "ratio": 4.485595958799024,
+      "minimum": 3
+    },
+    {
+      "role": "focus",
+      "foreground": "c0d8ff",
+      "background": "202e26",
+      "ratio": 9.801125954112495,
+      "minimum": 3
+    },
+    {
+      "role": "danger boundary",
+      "foreground": "a47e6e",
+      "background": "101916",
+      "ratio": 4.935748534659374,
+      "minimum": 3
+    },
+    {
+      "role": "selected boundary",
+      "foreground": "86ab8a",
+      "background": "2a3e2f",
+      "ratio": 4.487625792749958,
+      "minimum": 3
+    }
+  ],
+  "scope": "Code/assets/documents in pre-implementation hashes; no runtime credentials or database contents read",
+  "limitations": "Representative opaque token pairs; not a complete automated WCAG audit."
+}

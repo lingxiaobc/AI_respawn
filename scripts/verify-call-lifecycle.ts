@@ -4,8 +4,10 @@ import { mkdir, writeFile, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
 import { WebSocket } from "ws";
 import { parsePcm16Wav, splitPcmFrames } from "../packages/audio/src/wav.ts";
+import { diagnosticSession } from "./account-session.ts";
 const frames=splitPcmFrames(parsePcm16Wav(await readFile("fixtures/input/test-utterance.wav")).pcm);
 const base="http://127.0.0.1:8877";
+const account=await diagnosticSession(base),fetch=account.request;
 const root=resolve("artifacts/call-lifecycle",String(Date.now()));
 await mkdir(root,{recursive:true});
 async function released(){
@@ -23,7 +25,7 @@ const report:{avatarId:string;cycles:unknown[];soak?:unknown;result?:string}={av
 async function session(soak:boolean) {
   const started=performance.now();
   return await new Promise<Record<string,unknown>>((done,reject)=>{
-    const ws=new WebSocket(base.replace("http","ws")+"/ws?avatar="+avatarId,{origin:"http://127.0.0.1:5173"});
+    const ws=new WebSocket(base.replace("http","ws")+"/ws?avatar="+avatarId,{origin:"http://127.0.0.1:5173",headers:{cookie:account.cookie}});
     let active=0,expected=false,warning=false,lastMinute=-1,ended:string|undefined;
     let state="connecting", bytes=0,committed=0,firstAudio=0,rounds=0;
     const latencies:number[]=[];
@@ -79,4 +81,4 @@ try {
   await writeFile(resolve(root,"verification.json"),JSON.stringify(report,null,2));
   report.soak=await session(true);await released();report.result="PASS";
 } catch(error){report.result="FAIL: "+String(error);throw error;}
-finally{await writeFile(resolve(root,"verification.json"),JSON.stringify(report,null,2));console.log(JSON.stringify({report:resolve(root,"verification.json"),result:report.result}));}
+finally{await account.logout().catch(()=>{});await writeFile(resolve(root,"verification.json"),JSON.stringify(report,null,2));console.log(JSON.stringify({report:resolve(root,"verification.json"),result:report.result}));}

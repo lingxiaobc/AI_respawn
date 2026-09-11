@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { accountFetch as fetch } from "./account-api.ts";
 export type PhotoAvatar = { id:string; name:string; status:"queued"|"processing"|"paused"|"ready"|"failed"|"interrupted";
   stage:string; percent:number; message?:string; frameUrl?:string; batchId:string; persona?:string };
 const statusText: Record<PhotoAvatar["status"],string> = {
@@ -12,7 +13,7 @@ async function encode(file:File) {
     reader.readAsDataURL(file);
   });
 }
-export function PhotoUpload({onSelect}: {onSelect:(avatar:PhotoAvatar)=>void}) {
+export function PhotoUpload({onSelect, admin = true}: {onSelect:(avatar:PhotoAvatar)=>void; admin?: boolean}) {
   const [avatars,setAvatars]=useState<PhotoAvatar[]>([]);
   const [files,setFiles]=useState<File[]>([]);
   const [message,setMessage]=useState("");
@@ -90,7 +91,7 @@ export function PhotoUpload({onSelect}: {onSelect:(avatar:PhotoAvatar)=>void}) {
     finally{if(alive.current)setSaving(false);}
   };
   return <>
-    <section className="upload-panel" aria-label="批量上传人物">
+    {admin && <section className="upload-panel" aria-label="批量上传人物">
       <div><h2>添加新人物</h2><p>每次选择 1—3 张单人照片，每张照片创建一个角色。</p></div>
       <label className="file-picker">选择照片
         <input type="file" multiple accept="image/png,image/jpeg,image/webp" aria-label="选择人物照片"
@@ -109,24 +110,25 @@ export function PhotoUpload({onSelect}: {onSelect:(avatar:PhotoAvatar)=>void}) {
         {uploading?"上传中…":`开始制作${files.length?`（${files.length} 张）`:""}`}
       </button>
       <p role="status">{!connected?"正在连接人物服务，请确认本机服务已启动":callActive?"当前通话进行中，结束后可添加人物或开始新通话。":message|| (busy?"照片正在逐张制作，已完成的人物可立即通话。":"支持 JPG、PNG、WebP，单张不超过 12 MB。")}</p>
-    </section>
+    </section>}
+    {!admin && <p className="account-hint" role="status">{!connected ? "正在连接人物服务…" : callActive ? "当前有人正在通话，请稍后再试。" : "选择一位已分配的人物，点击接听后开始通话。"}</p>}
     <section aria-label="人物列表">
       <div className="library-heading"><h2>我的人物</h2><span>{avatars.filter(a=>a.status==="ready").length} 位可以通话</span></div>
-      {!avatars.length&&<div className="library-empty">从一张照片开始<br/><small>制作完成后，人物会出现在这里。</small></div>}
+      {!avatars.length&&<div className="library-empty">{admin ? "从一张照片开始" : "还没有分配给你的人物"}<br/><small>{admin ? "制作完成后，人物会出现在这里。" : "请联系管理员分配，完成后人物会出现在这里。"}</small></div>}
       <div className="avatar-grid">{avatars.map(avatar=><article className="avatar-card" key={avatar.id} data-avatar-id={avatar.id}>
         <div className="portrait">{avatar.status==="ready"?<img src={`/api/avatars/${avatar.id}/source.jpg`} alt={avatar.name} loading="lazy"/>:<span aria-hidden="true">◌</span>}
           <span className={`avatar-badge badge-${avatar.status}`}>{statusText[avatar.status]}</span>
         </div>
         <div className="card-body"><h3>{avatar.name}</h3>
-          <div className="role-actions" aria-label={`${avatar.name}的人物管理`}>
+          {admin && <div className="role-actions" aria-label={`${avatar.name}的人物管理`}>
             <button disabled={!connected} onClick={()=>openEditor(avatar,"name")}>重命名</button>
             <button disabled={!connected} onClick={()=>openEditor(avatar,"persona")}>角色设定</button>
             <button disabled={!connected} onClick={()=>openEditor(avatar,"delete")}>删除</button>
-          </div>
+          </div>}
           {avatar.status==="processing"&&<p className="making-note">{["standardizing","standardizing_fallback"].includes(avatar.stage)?"正在整理照片…":avatar.stage==="checking_portrait"?"正在检查人物照片…":"正在制作通话画面…"}</p>}
-          {avatar.message&&<p className="card-error">{avatar.message}</p>}
+          {admin && avatar.message&&<p className="card-error">{avatar.message}</p>}
           {avatar.status==="ready"?<button className="call-button" disabled={uploading||callActive||!connected} onClick={()=>onSelect(avatar)}>视频通话</button>
-          :["failed","interrupted"].includes(avatar.status)?<button disabled={callActive||uploading||!connected} onClick={()=>void retry(avatar.id)}>重试制作</button>
+          :["failed","interrupted"].includes(avatar.status)?admin?<button disabled={callActive||uploading||!connected} onClick={()=>void retry(avatar.id)}>重试制作</button>:<p className="card-help">人物暂不可用，请联系管理员。</p>
           :<p className="card-help">{avatar.status==="paused"?"通话结束后继续制作":avatar.status==="queued"?"等待前一张完成":"制作完成后即可通话"}</p>}
         </div>
       </article>)}</div>

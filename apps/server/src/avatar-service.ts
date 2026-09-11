@@ -6,6 +6,8 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { AvatarStore, AVATAR_ID, type AvatarRecord } from "./avatar-store.ts";
 import { prepareAvatar, WorkerStopError, type ProcessJob } from "./avatar-worker.ts";
 import { PortraitValidationUnavailableError, type PortraitStandardizer } from "./portrait-standardizer.ts";
+import { AuthError } from "./auth-store.ts";
+export type AvatarAccess = { admin: boolean; check: () => void; role: (avatar: AvatarRecord) => AvatarRecord | null };
 
 export const MAX_PHOTO_BYTES = 12 * 1024 * 1024;
 const MAX_BATCH_BYTES = MAX_PHOTO_BYTES * 4 + 64 * 1024;
@@ -65,7 +67,18 @@ export class AvatarService {
   constructor(root = resolve("artifacts/avatars"), runner: ProcessJob = prepareAvatar, standardizer?: PortraitStandardizer) {
     this.root = root; this.#runner = runner; this.store = new AvatarStore(root);
     this.#standardizer=standardizer;
-    this.initialized = this.store.importLegacy();
+    this.initialized = this.#recoverUploads().then(() => this.store.importLegacy());
+  }
+  async #recoverUploads() {
+    const pending = this.store.db.prepare("SELECT id FROM uncommitted_uploads").all() as {id:string}[];
+    await Promise.allSettled(pending.map(({id}) => this.#removeUpload(id)));
+  }
+  async #removeUpload(id: string) {
+    if (!AVATAR_ID.test(id)) throw new Error("Invalid abandoned upload id");
+    const directory = resolve(this.root, id);
+    if (!directory.startsWith(resolve(this.root) + sep)) throw new Error("Unexpected upload cleanup target");
+    await rm(directory, { recursive: true, force: true });
+    this.store.db.prepare("DELETE FROM uncommitted_uploads WHERE id=?").run(id);
   }
   get callActive() { return !!this.#hold; }
   async acquireCall(avatarId: string | undefined, token: string, signal: AbortSignal) {
@@ -192,21 +205,27 @@ export class AvatarService {
       return normalization.candidatePath!;
     }
   }
-  async handle(request: IncomingMessage,response: ServerResponse): Promise<void> {
+  async handle(request: IncomingMessage,response: ServerResponse, access?: AvatarAccess): Promise<void> {
     if (!isLocalRequest(request)) { json(response,403,{message:"仅允许本机页面访问"}); return; }
     const pathname = (request.url ?? "").split("?")[0]!;
     try {
       await this.initialized;
+      access?.check();
+      if (access && !access.admin && !["GET", "HEAD"].includes(request.method ?? "")) throw new RequestError(403,"仅管理员可管理人物");
+      const visible = () => this.store.list().map(a => access ? access.role(a) : a).filter((a): a is AvatarRecord => !!a);
+      const present = (job: AvatarRecord) => access && !access.admin
+        ? { id:job.id,name:job.name,status:job.status,stage:job.stage,percent:job.percent,frameUrl:job.frameUrl }
+        : publicJob(job);
       if (request.method === "GET" && pathname === "/api/avatars") {
-        json(response,200,{avatars:this.store.list().map(publicJob),callActive:this.callActive,message:this.#fault}); return;
+        json(response,200,{avatars:visible().map(present),callActive:this.callActive,...(!access||access.admin?{message:this.#fault}:{})}); return;
       }
       if (request.method === "GET" && pathname === "/api/avatars/current") {
-        const jobs=this.store.list();
-        json(response,200,{avatar:jobs.filter(j=>j.status==="ready").map(publicJob).at(-1)??null,
-          processing:jobs.filter(pendingStatus).map(publicJob)[0]??null}); return;
+        const jobs=visible();
+        json(response,200,{avatar:jobs.filter(j=>j.status==="ready").map(present).at(-1)??null,
+          processing:jobs.filter(pendingStatus).map(present)[0]??null}); return;
       }
       if (request.method === "POST" && ["/api/avatars","/api/avatars/batches"].includes(pathname)) {
-        await this.#upload(request,response,pathname.endsWith("/batches")); return;
+        await this.#upload(request,response,pathname.endsWith("/batches"),access?.check); return;
       }
       const roleMatch=/^\/api\/avatars\/([^/]+)$/.exec(pathname);
       if(roleMatch&&AVATAR_ID.test(roleMatch[1]!)&&["PATCH","DELETE"].includes(request.method??"")) {
@@ -222,6 +241,7 @@ export class AvatarService {
         if(request.headers["content-type"]!=="application/json")throw new RequestError(415,"请提交人物设置");
         let data;
         try{data=JSON.parse((await body(request,20_000)).toString("utf8"));}catch{throw new RequestError(400,"人物设置格式无效");}
+        access?.check();
         if(!data||typeof data!=="object"||Array.isArray(data)||Object.keys(data).some(k=>!["name","persona"].includes(k)))throw new RequestError(400,"人物设置字段无效");
         const changes:Partial<AvatarRecord>={};
         if(Object.hasOwn(data,"name")) {
@@ -239,6 +259,7 @@ export class AvatarService {
       if (!match || !AVATAR_ID.test(match[1]!)) throw new RequestError(404,"人物不存在");
       const id=match[1]!, asset=match[2]!;
       const job=this.store.active(id);
+      if (access && (!job || !access.role(job))) throw new RequestError(404,"人物不存在或未授权");
       if (asset === "retry" && request.method === "POST") {
         if (request.headers["x-avatar-upload"]!=="1") throw new RequestError(403,"请从人物列表重试");
         if (!this.#accepting || this.#fault) throw new RequestError(503,this.#fault??"制作服务正在关闭，请稍后重试");
@@ -246,6 +267,7 @@ export class AvatarService {
         if (!["failed","interrupted"].includes(job.status)) { json(response,200,publicJob(job)); return; }
         if (this.#hold || this.#uploading) throw new RequestError(409,"请在通话或上传结束后重试");
         await stat(job.sourcePath).catch(()=>{throw new RequestError(409,"原照片不可用，请重新上传");});
+        access?.check();
         // Filesystem checks yield: a call, shutdown or another retry may have won.
         if (!this.#accepting) throw new RequestError(503,"制作服务正在关闭，请稍后重试");
         if (this.#hold || this.#uploading) throw new RequestError(409,"请在通话或上传结束后重试");
@@ -261,10 +283,14 @@ export class AvatarService {
       if (asset==="status") {
         // Import interrupted old jobs that may have been copied into the local library.
         if (!job) await this.store.importLegacy();
-        const found=this.store.active(id); json(response,found?200:404,found?publicJob(found):{message:"人物不存在"}); return;
+        access?.check();
+        const found=this.store.active(id), allowed=found&&(access?access.role(found):found);
+        json(response,allowed?200:404,allowed?present(allowed):{message:"人物不存在"}); return;
       }
       if (!job || job.status!=="ready" || !job.assetPath || !Object.hasOwn(ASSETS,asset)) throw new RequestError(404,"人物资源不可用");
       const file=resolve(job.assetPath,asset), info=await stat(file);
+      access?.check();
+      if (access && !access.role(job)) throw new RequestError(404,"人物不存在或未授权");
       let start=0,end=info.size-1;
       if(request.headers.range) {
         const range=/^bytes=(\d+)-(\d*)$/.exec(request.headers.range);
@@ -273,25 +299,27 @@ export class AvatarService {
         if(start>end||start>=info.size){response.writeHead(416,{"content-range":`bytes */${info.size}`}).end();return;}
       }
       response.writeHead(request.headers.range?206:200,{"content-type":ASSETS[asset]!,"content-length":end-start+1,
-        "accept-ranges":"bytes","cache-control":"private, no-cache","x-content-type-options":"nosniff",
+        "accept-ranges":"bytes","cache-control":"private, no-store","x-content-type-options":"nosniff",
         "cross-origin-resource-policy":"same-origin",...(request.headers.range?{"content-range":`bytes ${start}-${end}/${info.size}`}:{})});
       if(request.method==="HEAD"){response.end();return;}
       const stream=createReadStream(file,{start,end});
       response.once("close",()=>stream.destroy());stream.once("error",()=>response.destroy());stream.pipe(response);
     } catch(error) {
-      if(!response.headersSent) json(response,error instanceof RequestError?error.status:500,
-        {message:error instanceof RequestError?error.message:"本地人物服务异常，请重试"});
+      if(!response.headersSent) json(response,error instanceof RequestError||error instanceof AuthError?error.status:500,
+        {message:error instanceof RequestError||error instanceof AuthError?error.message:"本地人物服务异常，请重试"});
       else response.destroy();
     }
   }
-  async #upload(request: IncomingMessage,response: ServerResponse,batch: boolean) {
+  async #upload(request: IncomingMessage,response: ServerResponse,batch: boolean, check?: () => void) {
     if(request.headers["x-avatar-upload"]!=="1") throw new RequestError(403,"请从本机上传页面提交");
     if(this.#uploading) throw new RequestError(409,"正在接收照片，请稍后再试");
     const type=request.headers["content-type"]??"";
     if(batch ? type!=="application/json" : !TYPES.has(type)) throw new RequestError(415,"上传格式不支持");
     this.#uploading=true;
+    const created: string[] = []; let committed = false;
     try {
       const bytes=await body(request,batch?MAX_BATCH_BYTES:MAX_PHOTO_BYTES);
+      check?.();
       let files: Array<{name:string;type:string;data:string}>;
       let key:string;
       if(batch) {
@@ -318,7 +346,8 @@ export class AvatarService {
           photo=Buffer.from(file.data,"base64");
           if(photo.length>MAX_PHOTO_BYTES||photo.toString("base64")!==file.data||!hasImageSignature(photo,file.type)) message="图片内容与格式不匹配";
         }
-        await mkdir(directory,{recursive:true});
+        await mkdir(directory); created.push(directory);
+        this.store.db.prepare("INSERT INTO uncommitted_uploads(id,created_at) VALUES(?,?)").run(id,new Date().toISOString());
         const sourcePath=resolve(directory,"upload.bin");
         if(photo) await writeFile(sourcePath,photo,{flag:"wx"});
         jobs.push({id,batchId,name:name||"照片人物",status:message?"failed":"queued",stage:message?"failed":"queued",
@@ -326,10 +355,19 @@ export class AvatarService {
           ...(this.#standardizer?{normalization:{state:"pending" as const,slot:"primary" as const}}:{})});
       }
       if(!this.#accepting) throw new RequestError(503,"服务正在关闭");
-      this.store.transaction(()=>{this.store.addBatch(batchId,key);for(const job of jobs)this.store.save(job);});
+      check?.();
+      this.store.transaction(()=>{this.store.addBatch(batchId,key);for(const job of jobs){this.store.save(job);this.store.db.prepare("DELETE FROM uncommitted_uploads WHERE id=?").run(job.id);}});
+      committed = true;
       this.#pump();
       json(response,202,batch?{batchId,avatars:jobs.map(publicJob)}:publicJob(this.store.get(jobs[0]!.id)!));
-    } finally {this.#uploading=false;}
+    } finally {
+      try {
+        if (!committed) {
+          const results = await Promise.allSettled(created.map(directory => this.#removeUpload(directory.slice(resolve(this.root).length + 1))));
+          if (results.some(r => r.status === "rejected")) throw new RequestError(503,"上传已取消，部分临时文件待服务重启清理");
+        }
+      } finally { this.#uploading=false; }
+    }
   }
   async stop() {
     this.#accepting=false;this.#abort?.abort(new Error("shutdown"));

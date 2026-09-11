@@ -30,6 +30,7 @@ export class AvatarStore {
       PRAGMA foreign_keys=ON;
       PRAGMA busy_timeout=5000;
       CREATE TABLE IF NOT EXISTS schema_migrations(version INTEGER PRIMARY KEY);
+      CREATE TABLE IF NOT EXISTS uncommitted_uploads(id TEXT PRIMARY KEY, created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS batches(id TEXT PRIMARY KEY, request_key TEXT UNIQUE NOT NULL, created_at TEXT NOT NULL);
       CREATE TABLE IF NOT EXISTS avatars(
         id TEXT PRIMARY KEY, batch_id TEXT NOT NULL REFERENCES batches(id),
@@ -90,6 +91,7 @@ export class AvatarStore {
   async importLegacy() {
     for (const id of await readdir(this.root)) {
       if (!AVATAR_ID.test(id) || this.get(id)) continue;
+      if (this.db.prepare("SELECT id FROM uncommitted_uploads WHERE id=?").get(id)) continue;
       const directory = resolve(this.root, id);
       let old: {id?: string; status?: string; createdAt?: string} = {};
       let damaged = false;

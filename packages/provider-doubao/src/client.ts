@@ -52,6 +52,7 @@ export class DoubaoRealtimeClient extends EventTarget {
   }
 
   async connect(): Promise<void> {
+    if (this.#closed) throw new Error("Client is closed");
     if (this.#socket) throw new Error("Client has already been connected");
 
     const socket = new WebSocket(this.#options.url ?? DEFAULT_DOUBAO_URL, {
@@ -60,9 +61,11 @@ export class DoubaoRealtimeClient extends EventTarget {
     this.#socket = socket;
 
     await this.#waitForOpen(socket);
+    if (this.#closed) throw new Error("Client closed during connection");
     this.#wireMessages(socket);
     this.#send(createSessionEvent(this.#options.session));
     await this.waitFor("session.created");
+    if (this.#closed) throw new Error("Client closed during preparation");
     this.#sessionCreated = true;
     this.#send(createMuteEvent());
   }
@@ -102,32 +105,43 @@ export class DoubaoRealtimeClient extends EventTarget {
       }
     }
     this.#closed = true;
-    socket.close(1000, "client shutdown");
+    if (socket.readyState !== WebSocket.CLOSED) await new Promise<void>(resolve => {
+      const timer = setTimeout(() => socket.terminate(), 1000);
+      socket.once("close", () => { clearTimeout(timer); resolve(); });
+      if (socket.readyState === WebSocket.CONNECTING) socket.terminate();
+      else socket.close(1000, "client shutdown");
+    });
   }
 
   waitFor(type: string, timeoutMs = this.#options.timeoutMs ?? 30_000): Promise<ServerEvent> {
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
+      const cleanup = () => {
+        clearTimeout(timer);
         this.removeEventListener("provider-event", onEvent);
+        this.#socket?.off("close", onClosed);
+      };
+      const onClosed = () => { cleanup(); reject(new Error(`Connection closed while waiting for ${type}`)); };
+      const timer = setTimeout(() => {
+        cleanup();
         reject(new Error(`Timed out waiting for ${type}`));
       }, timeoutMs);
 
       const onEvent = (raw: Event) => {
         const event = (raw as CustomEvent<ServerEvent>).detail;
         if (event.type === "error") {
-          clearTimeout(timer);
-          this.removeEventListener("provider-event", onEvent);
+          cleanup();
           const summary = safeEventSummary(event);
           const details = [summary.error_code, summary.error_type, summary.message].filter(Boolean).join(" ");
           reject(new Error(`Provider error while waiting for ${type}${details ? `: ${details}` : ""}`));
           return;
         }
         if (event.type !== type) return;
-        clearTimeout(timer);
-        this.removeEventListener("provider-event", onEvent);
+        cleanup();
         resolve(event);
       };
       this.addEventListener("provider-event", onEvent);
+      this.#socket?.once("close", onClosed);
+      if (this.#socket?.readyState === WebSocket.CLOSED) onClosed();
     });
   }
 
@@ -210,6 +224,7 @@ export class DoubaoRealtimeClient extends EventTarget {
     return new Promise((resolve, reject) => {
       const timeoutMs = this.#options.timeoutMs ?? 30_000;
       const timer = setTimeout(() => reject(new Error("Provider WebSocket open timed out")), timeoutMs);
+      socket.once("close", () => { clearTimeout(timer); reject(new Error("Provider closed before connection completed")); });
       socket.once("open", () => {
         clearTimeout(timer);
         resolve();

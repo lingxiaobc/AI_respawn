@@ -4,6 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "account:init": "node --experimental-strip-types scripts/account-admin.ts init",
+    "account:reset": "node --experimental-strip-types scripts/account-admin.ts reset",
     "avatar:setup": "powershell -NoProfile -File scripts/setup-avatar.ps1",
     "avatar:verify": "node --experimental-strip-types scripts/verify-avatar.ts",
     "check": "tsc --noEmit",

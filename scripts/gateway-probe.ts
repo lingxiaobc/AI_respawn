@@ -3,10 +3,17 @@ import { setTimeout as delay } from "node:timers/promises";
 import WebSocket from "ws";
 import { parsePcm16Wav, splitPcmFrames } from "../packages/audio/src/wav.ts";
 import type { GatewayMessage } from "../packages/protocol/src/browser.ts";
+import { diagnosticSession } from "./account-session.ts";
 
-const socket = new WebSocket("ws://127.0.0.1:5173/ws", {
+const account = await diagnosticSession("http://127.0.0.1:5173");
+const library = await (await account.request("http://127.0.0.1:5173/api/avatars")).json();
+const avatar = library.avatars?.find((a:{id:string;status:string})=>a.status==="ready"&&(!process.env.DIAGNOSTIC_AVATAR_ID||a.id===process.env.DIAGNOSTIC_AVATAR_ID));
+if(!avatar){await account.logout();throw new Error("No authorized ready avatar for diagnostics");}
+const socket = new WebSocket(`ws://127.0.0.1:5173/ws?avatar=${avatar.id}`, {
   origin: "http://127.0.0.1:5173",
+  headers: { cookie: account.cookie },
 });
+socket.once("close",()=>{void account.logout().catch(()=>{});});
 const fixture = parsePcm16Wav(await readFile("fixtures/input/test-utterance.wav"));
 const frames = splitPcmFrames(fixture.pcm);
 let outputBytes = 0;
